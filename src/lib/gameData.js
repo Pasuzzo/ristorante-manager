@@ -1,0 +1,87 @@
+// Dati di gioco lato UI: etichette, enum, helper di costo. I valori reali
+// (fiscali, CCNL, food cost) vivono nel motore lato server; qui solo lo stretto
+// necessario a mostrare etichette e stime indicative al giocatore.
+
+export const FORME = [
+  {
+    value: 'ditta_forfettaria', label: 'Ditta individuale forfettaria',
+    desc: 'Tasse piatte, contabilità minima, niente IVA. Limite 85.000€/anno.',
+    pro: ['Contabilità economica', 'Imposta 5% nei primi 5 anni'],
+    contro: ['Limite ricavi 85.000€', 'Non detrai l\'IVA'],
+  },
+  {
+    value: 'ditta_ordinaria', label: 'Ditta individuale ordinaria',
+    desc: 'IRPEF progressiva, IVA detraibile. Flessibile, più contabilità.',
+    pro: ['Nessun limite di ricavi', 'IVA detraibile'],
+    contro: ['Contabilità più costosa', 'IRPEF fino al 43%'],
+  },
+  {
+    value: 'srls', label: 'SRL semplificata',
+    desc: 'Società a responsabilità limitata, capitale 1€. Patrimonio separato.',
+    pro: ['Patrimonio separato', 'Costituzione economica'],
+    contro: ['Contabilità societaria', 'Utile bloccato in società'],
+  },
+  {
+    value: 'srl', label: 'SRL',
+    desc: 'Società classica, notaio, capitale maggiore. Per chi vuole crescere.',
+    pro: ['Massima credibilità', 'Capitalizzabile'],
+    contro: ['Costo costituzione alto', 'Più burocrazia'],
+  },
+];
+
+export const LOCALITA = [
+  { value: 'riviera', label: 'Riviera', desc: 'Stagionalità estrema: boom estivo, inverno quieto.' },
+  { value: 'citta', label: 'Città', desc: 'Affluenza stabile, calo estivo per le ferie.' },
+  { value: 'paese', label: 'Paese', desc: 'Costante, poco turismo, conta il passaparola.' },
+];
+
+// Allineato a fiscal-config.ts (ccnlLordoMensile)
+export const RUOLI = [
+  { value: 'lavapiatti', label: 'Lavapiatti', reparto: 'cucina' },
+  { value: 'commis', label: 'Commis', reparto: 'cucina' },
+  { value: 'cuoco', label: 'Cuoco', reparto: 'cucina' },
+  { value: 'chef', label: 'Chef', reparto: 'cucina' },
+  { value: 'cameriere', label: 'Cameriere', reparto: 'sala' },
+  { value: 'barista', label: 'Barista', reparto: 'sala' },
+  { value: 'direttore', label: 'Direttore di sala', reparto: 'sala' },
+];
+
+export const LIVELLI = [
+  { value: 'scarso', label: 'Scarso', base: 6, hint: 'economico, attributi bassi' },
+  { value: 'medio', label: 'Medio', base: 10, hint: ' equilibrio prezzo/qualità' },
+  { value: 'bravo', label: 'Bravo', base: 14, hint: 'costoso, attributi alti' },
+];
+
+export const QUALITA = [
+  { value: 'economica', label: 'Economica', food: 0.26, grad: 0.35 },
+  { value: 'standard', label: 'Standard', food: 0.32, grad: 0.6 },
+  { value: 'premium', label: 'Premium', food: 0.39, grad: 0.88 },
+];
+
+export const SERVIZI = [
+  { value: 'wifi', label: 'Wi-Fi' },
+  { value: 'dehors', label: 'Dehors' },
+  { value: 'prenotazione_online', label: 'Prenotazione online' },
+  { value: 'seggioloni', label: 'Seggioloni' },
+  { value: 'accessibilita', label: 'Accessibilità' },
+  { value: 'parcheggio', label: 'Parcheggio' },
+  { value: 'menu_allergeni', label: 'Menu allergeni' },
+  { value: 'pet_friendly', label: 'Pet friendly' },
+];
+
+export const CCNL = {
+  lavapiatti: 1550, commis: 1620, cameriere: 1700,
+  barista: 1700, cuoco: 1820, chef: 1980, direttore: 2150,
+};
+
+export function lordoMensile(ruolo, superminimo = 1) {
+  return Math.round((CCNL[ruolo] ?? 1700) * superminimo);
+}
+
+export function ruoloLabel(v) { return RUOLI.find((r) => r.value === v)?.label ?? v; }
+export function formaLabel(v) { return FORME.find((f) => f.value === v)?.label ?? v; }
+export function localitaLabel(v) { return LOCALITA.find((l) => l.value === v)?.label ?? v; }
+export function livelloLabel(v) { return LIVELLI.find((l) => l.value === v)?.label ?? v; }
+export function qualitaLabel(v) { return QUALITA.find((q) => q.value === v)?.label ?? v; }
+export function servizioLabel(v) { return SERVIZI.find((s) => s.value === v)?.label ?? v; }
+export function repartoDi(ruolo) { return RUOLI.find((r) => r.value === ruolo)?.reparto ?? 'sala'; }
