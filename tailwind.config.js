@@ -10,17 +10,6 @@ module.exports = {
   			sm: 'calc(var(--radius) - 4px)'
   		},
   		colors: {
-  			rm: {
-  				'bg': '#2b2233',
-  				'bg2': '#1a141f',
-  				'wood': '#8c5a3c',
-  				'wood-dark': '#5a3825',
-  				'cream': '#f2e5bc',
-  				'red': '#c8443c',
-  				'green': '#5a8c46',
-  				'gold': '#e8b84b',
-  				'blue': '#3c5a8c',
-  			},
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
   			card: {
@@ -76,9 +65,7 @@ module.exports = {
   			heading: ['var(--font-heading)'],
   			body: ['var(--font-body)'],
   			display: ['var(--font-display)'],
-  			mono: ['var(--font-mono)'],
-  			pixel: ['"Press Start 2P"', 'monospace'],
-  			vt: ['"VT323"', 'monospace']
+  			mono: ['var(--font-mono)']
   		},
   		keyframes: {
   			'accordion-down': {
