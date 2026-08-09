@@ -42,6 +42,7 @@ export default async function (req: Request): Promise<Response> {
       macro: { fiduciaConsumatori: 0.98, crescitaSalariAnnua: 0.012, eventi: [] },
       annoCalendario: new Date().getFullYear(),
       seed: (crypto.getRandomValues(new Uint32Array(1))[0] | 0),
+      staffIniziale: Array.isArray(body.staffIniziale) ? body.staffIniziale : undefined,
     });
 
     const record = await base44.entities.Partita.create({
