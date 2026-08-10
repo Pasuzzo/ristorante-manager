@@ -35,6 +35,9 @@ export interface ProfiloLocale {
   elasticitaPrezzo: number;
   /** riempimento medio di un locale "normale" (default 0.42) — manopola di bilanciamento */
   tassoBase?: number;
+  /** indice dei prezzi del MENU: 1 all'apertura, cresce con l'inflazione
+   *  generale. Se assente si usa il vecchio calcolo su cfg. */
+  indicePrezziMenu?: number;
 }
 
 export interface StatoMarketing {
@@ -61,7 +64,20 @@ export interface EventoMacro {
   moltiplicatoreAffluenza: number; // es. bonus vacanze 1.08, crisi 0.85
 }
 
+/** Dettaglio di un singolo giorno: serve al playback "play/pausa" nel client. */
+export interface GiornoSimulato {
+  giorno: number;
+  dow: number;              // 0=dom … 6=sab
+  chiuso: boolean;
+  festivita: string | null;
+  ponte: boolean;
+  maltempo: boolean;
+  copertiDomanda: number;   // quanti ne volevano venire
+}
+
 export interface EsitoRicaviMese {
+  /** giorno per giorno, in ordine: il client li scorre a 2-3 secondi l'uno */
+  giorni: GiornoSimulato[];
   ricaviLordi: number;
   copertiTotali: number;
   scontrinoMedio: number;
@@ -175,22 +191,27 @@ export function generaRicaviMese(
   const fStagione = STAGIONALITA[locale.tipoLocalita][mese - 1];
 
   // inflazione cumulata: scontrino cresce col listino e coi prezzi generali
-  const scontrino =
-    locale.scontrinoMedioBase * locale.listino * Math.pow(1 + cfg.inflazioneAnnua, annoDiGioco - 1);
+  const indice = locale.indicePrezziMenu ?? Math.pow(1 + cfg.inflazioneAnnua, annoDiGioco - 1);
+  const scontrino = locale.scontrinoMedioBase * locale.listino * indice;
 
   let copertiTotali = 0;
   let giorniApertura = 0;
   let giorniMaltempo = 0;
+  const giorni: GiornoSimulato[] = [];
 
   for (let g = 1; g <= giorniNelMese; g++) {
     const dow = new Date(anno, mese - 1, g).getDay();
     const festa = festivitaDelGiorno(anno, mese, g);
-    if (dow === locale.giornoChiusura && !festa) continue; // chiuso (ma se è festa apro)
+    if (dow === locale.giornoChiusura && !festa) {
+      giorni.push({ giorno: g, dow, chiuso: true, festivita: festa, ponte: false, maltempo: false, copertiDomanda: 0 });
+      continue; // chiuso (ma se è festa apro)
+    }
     giorniApertura++;
+    const ponte = !festa && ePonte(anno, mese, g);
 
     let f = F_GIORNO[dow] * fStagione * fMkt * fPrezzo * fRep * macro.f;
     if (festa) f *= locale.tipoLocalita === "riviera" && festa === "Ferragosto" ? 2.2 : 1.6;
-    if (!festa && ePonte(anno, mese, g)) f *= 1.3;
+    if (ponte) f *= 1.3;
 
     const brutto = rng() < P_MALTEMPO[mese - 1];
     if (brutto) { f *= 0.72; giorniMaltempo++; }
@@ -199,6 +220,7 @@ export function generaRicaviMese(
     const rumore = 0.85 + rng() * 0.3;
     const coperti = Math.min(capienzaGiorno, Math.round(capienzaGiorno * tassoBase * f * rumore));
     copertiTotali += coperti;
+    giorni.push({ giorno: g, dow, chiuso: false, festivita: festa, ponte, maltempo: brutto, copertiDomanda: coperti });
   }
 
   // il seguito social evolve: spesa + passaparola dei coperti reali − decay
@@ -209,5 +231,5 @@ export function generaRicaviMese(
   if (pFesta.length && fStagione > 1.3) eventi.push(`🎉 Alta stagione + ${pFesta.join(", ")}`);
 
   const ricaviLordi = copertiTotali * scontrino;
-  return { ricaviLordi, copertiTotali, scontrinoMedio: scontrino, giorniApertura, eventi };
+  return { giorni, ricaviLordi, copertiTotali, scontrinoMedio: scontrino, giorniApertura, eventi };
 }
