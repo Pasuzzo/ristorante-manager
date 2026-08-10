@@ -1,8 +1,8 @@
 import React from 'react';
 
-const STEPS = ['Locale', 'Forma', 'Staff', 'Riepilogo'];
+const STEPS = ['Titolare', 'Quando', 'Forma', 'Capitale', 'Locale', 'Commercialista', 'Brigata', 'Riepilogo'];
 
-/** Indicatore di avanzamento del wizard di nuova partita. */
+/** Indicatore di avanzamento del wizard di costituzione (8 step). */
 export default function StepIndicator({ current }) {
   return (
     <div className="flex items-center justify-between gap-1 mb-3">
@@ -22,7 +22,7 @@ export default function StepIndicator({ current }) {
               >
                 {done ? '✓' : i + 1}
               </div>
-              <span className={`rm-pixel text-[7px] ${active ? 'text-rm-gold' : 'text-rm-cream/60'}`}>{label}</span>
+              <span className={`rm-pixel text-[6px] leading-none text-center ${active ? 'text-rm-gold' : 'text-rm-cream/60'}`}>{label}</span>
             </div>
             {i < STEPS.length - 1 && (
               <div className="flex-1 h-[3px] mt-[10px]" style={{ backgroundColor: i < current ? '#5a8c46' : '#5a3825' }} />

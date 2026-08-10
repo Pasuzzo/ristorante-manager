@@ -16,7 +16,7 @@
  *
  * Il modulo genera annunci PLAUSIBILI ancorati a quei valori reali:
  * il prezzo è vero, l'annuncio è di fantasia. Vantaggi: nessun problema
- * legale, nessuna dipendenza di rete durante il gioco, e il seed rende
+ * legale, nessuna dipendenza di rete durante il gioco, e il seed rend
  * la bacheca riproducibile.
  *
  * ⚠️ LICENZA: i dati OMI vanno citati come "Agenzia Entrate - OMI".
@@ -226,6 +226,7 @@ export function annuncioAConfigLocale(a: Annuncio, modalita: "affitto" | "acquis
     postiEsterni: a.postiEsterniPossibili,
     stato: a.stato,
     impiantiPresenti: a.impiantiPresenti,
+    exRistorante: a.exRistorante,
     /** canone REALE dell'annuncio: sovrascrive la stima per zona */
     canoneRealeMensile: a.canoneMensile,
     prezzoRealeVendita: a.prezzoVendita,

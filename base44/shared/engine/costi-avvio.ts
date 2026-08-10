@@ -37,6 +37,9 @@ export interface ConfigLocale {
   mutuo?: { percentualeFinanziata: number; anni: number; tassoAnnuo: number };
   /** true se il locale ha già cappa, impianti e allacci a norma */
   impiantiPresenti: boolean;
+  /** rilevi un ristorante GIÀ ATTIVO: attrezzature e arredo li paghi
+   *  con la buonuscita, non li ricompri da zero */
+  exRistorante?: boolean;
 }
 
 // ─────────────────────────────────────────────── Prezzi di mercato (parametrici)
@@ -192,9 +195,11 @@ export function calcolaPianoCosti(c: ConfigLocale): PianoCosti {
   }
 
   // ── Allestimento e attrezzature
-  unaTantum.push({ voce: `Allestimento locale (${c.stato.replace(/_/g, " ")})`, importo: ALLESTIMENTO_MQ[c.stato] * c.mq });
-  unaTantum.push({ voce: "Attrezzatura cucina professionale", importo: COSTI_UNA_TANTUM.attrezzaturaCucinaMq * mqCucina });
-  unaTantum.push({ voce: `Arredo sala (${c.postiASedere} coperti)`, importo: COSTI_UNA_TANTUM.arredoPosto * c.postiASedere });
+  // rilevando un avviato, gran parte del kit è già dentro: lo paghi con la buonuscita
+  const sconto = c.exRistorante ? 0.22 : 1;
+  unaTantum.push({ voce: `Allestimento locale (${c.stato.replace(/_/g, " ")})${c.exRistorante ? " — subentro" : ""}`, importo: ALLESTIMENTO_MQ[c.stato] * c.mq * sconto });
+  unaTantum.push({ voce: `Attrezzatura cucina${c.exRistorante ? " (integrazione al kit esistente)" : " professionale"}`, importo: COSTI_UNA_TANTUM.attrezzaturaCucinaMq * mqCucina * sconto });
+  unaTantum.push({ voce: `Arredo sala (${c.postiASedere} coperti)${c.exRistorante ? " — subentro" : ""}`, importo: COSTI_UNA_TANTUM.arredoPosto * c.postiASedere * sconto });
   if (!c.impiantiPresenti) {
     unaTantum.push({ voce: "Cappa, canna fumaria, abbattimento fumi", importo: COSTI_UNA_TANTUM.cappaEImpianti });
     unaTantum.push({ voce: "Allacci utenze potenziati", importo: COSTI_UNA_TANTUM.allacci });

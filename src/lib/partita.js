@@ -33,6 +33,11 @@ export async function creaPartita(payload) {
   return res.data;
 }
 
+export async function preparaCostituzione(payload) {
+  const res = await base44.functions.invoke('preparaCostituzione', payload);
+  return res.data;
+}
+
 export async function avanzaTurno(payload) {
   const res = await base44.functions.invoke('avanzaMese', payload);
   return res.data;

@@ -33,9 +33,15 @@ import {
 } from "./titolare.ts";
 import { dinamicheCarriera, DipendenteConCarriera, QUOTA_COSTO_CONGEDO } from "./comportamenti.ts";
 import {
-  Candidato, Offerta, EsitoOfferta, Stile, RuoloEsteso,
-  generaMercato, valutaOfferta, assumi as assumiCandidato,
-  aggiornaAdattamento, eventiDipendenti, EventoDipendente,
+  OpzioneCommercialista, LivelloCommercialista, opzioniCommercialista,
+  riepilogaCostituzione, regoleCapitale, effettiCapitale, poolIniziale, verificaBrigata,
+} from "./costituzione.ts";
+import { Annuncio, annuncioAConfigLocale } from "./immobili.ts";
+import { ConfigLocale, calcolaPianoCosti } from "./costi-avvio.ts";
+import { Candidato, Offerta, valutaOfferta, assumi as assumiCandidato } from "./mercato.ts";
+import {
+  EsitoOfferta, Stile, RuoloEsteso,
+  generaMercato, aggiornaAdattamento, eventiDipendenti, EventoDipendente,
 } from "./mercato.ts";
 import {
   CATALOGO_ESEMPIO, Bando, Domanda, ProfiloRichiedente,
@@ -68,6 +74,11 @@ export interface StatoPartita {
   macroStato: StatoMacro;
   titolare: Titolare;
   compiti: GestioneCompiti;
+  /** capitale sociale versato: patrimonio vincolato, non cassa spendibile */
+  capitaleVersato: number;
+  commercialista: OpzioneCommercialista;
+  /** l'annuncio scelto in fase di costituzione */
+  immobile?: { titolo: string; comune: string; zona: string; canoneMensile?: number; prezzoVendita?: number; avviamento?: number };
   /** pratiche di agevolazione in corso (bandi) */
   domande: Domanda[];
   /** assunzioni regolari effettuate nell'anno in corso (per bandi occupazione) */
@@ -167,57 +178,157 @@ export interface ConfigNuovaPartita {
   nomeRistorante: string;
   forma: FormaGiuridica;
   budgetIniziale: number;
-  locale: ProfiloLocale;
-  costiFissiMensili: number;
+  /** ANNUNCIO SCELTO dalla bacheca — non più parametri astratti */
+  annuncio: Annuncio;
+  modalitaImmobile: "affitto" | "acquisto" | "acquisto_mutuo";
+  /** CANDIDATI SCELTI dal pool, con l'offerta fatta a ciascuno */
+  assunzioniIniziali: Array<{ candidato: Candidato; offerta: Offerta }>;
+  commercialista: LivelloCommercialista;
+  /** solo per società di capitali */
+  capitaleSociale?: number;
+  stileLocale: Stile;
+  titolare: { nome: string; eta: number; sesso: Sesso };
   macro: ContestoMacro;
-  annoCalendario: number; // es. 2026
+  annoCalendario: number;
+  meseInizio?: number; // aprire a gennaio o a giugno cambia tutto
   seed: number;
-  stileLocale?: Stile;
-  /** fotografia Istat scattata alla creazione della partita */
   datiIstat?: DatiPartenza;
-  titolare?: { nome: string; eta: number; sesso: Sesso };
-  staffIniziale?: NuovaAssunzione[];
 }
 
 export function nuovaPartita(c: ConfigNuovaPartita, cfg: FiscalConfig = FISCAL_2026): StatoPartita {
-  const { ristorante } = costituisci(c.nomeRistorante, c.forma, c.budgetIniziale, cfg);
   const rng = mulberry32(c.seed);
-  const staff = (c.staffIniziale ?? []).map((a, i) =>
-    nuovoDipendente(`d${i + 1}`, a.nome, a.ruolo, a.livello, a.superminimo, a.inRegola, rng)
-  );
-  return {
+  const mese = c.meseInizio ?? 1;
+
+  // ── 1. Il locale scelto → configurazione e costi reali
+  const confLocale = annuncioAConfigLocale(c.annuncio, c.modalitaImmobile) as unknown as ConfigLocale & {
+    canoneRealeMensile?: number; avviamento?: number; passaggio?: number;
+  };
+  const piano = calcolaPianoCosti(confLocale);
+  // il canone dell'annuncio scelto SOVRASCRIVE la stima per zona
+  const canone = c.annuncio.canoneMensile ?? 0;
+  const fissiSenzaAffitto = piano.mensili
+    .filter((v) => !/Affitto locale/.test(v.voce))
+    .reduce((s, v) => s + v.importo, 0);
+  const costiFissiMensili = fissiSenzaAffitto + (c.modalitaImmobile === "affitto" ? canone : 0);
+  // costi una tantum del locale: allestimento, cauzione, avviamento…
+  const costiLocale =
+    piano.totaleUnaTantum +
+    (c.annuncio.avviamento ?? 0) +
+    (c.modalitaImmobile === "affitto" ? canone * 3 : 0);
+
+  // ── 2. Il commercialista scelto
+  const commercialista =
+    opzioniCommercialista(c.forma).find((o) => o.id === c.commercialista) ??
+    opzioniCommercialista(c.forma)[1];
+
+  // ── 3. La brigata: solo chi ha accettato l'offerta
+  const staff: DipendenteEsteso[] = [];
+  const esitiAssunzioni: string[] = [];
+  for (const a of c.assunzioniIniziali) {
+    const esito = valutaOfferta(a.candidato, a.offerta, rng);
+    if (esito.accettata) {
+      staff.push(assumiCandidato(a.candidato, a.offerta, esito) as unknown as DipendenteEsteso);
+      esitiAssunzioni.push(`✅ ${a.candidato.nome} ha accettato.`);
+    } else {
+      esitiAssunzioni.push(`❌ ${a.candidato.nome} ha rifiutato: ${esito.motivo}`);
+    }
+  }
+  const costoStaffMensile = staff.reduce(
+    (s, d) => s + cfg.ccnlLordoMensile[d.ruolo] * d.superminimo * 1.38, 0);
+
+  // ── 4. Capitale sociale e riepilogo economico
+  const regole = regoleCapitale(c.forma);
+  const riepilogo = riepilogaCostituzione({
+    forma: c.forma,
+    budgetIniziale: c.budgetIniziale,
+    costiLocale,
+    capitaleSociale: c.capitaleSociale ?? regole.minimo,
+    commercialista,
+    costoStaffMensile,
+    costiFissiMensili,
+    fidoBase: cfg.tesoreria.fidoDefault,
+    ruoliBrigata: staff.map((d) => (d as any).ruoloEsteso ?? d.ruolo),
+  });
+
+  const ristorante: Ristorante = {
+    nome: c.nomeRistorante,
+    forma: c.forma,
+    annoAttivita: 1,
+    cassa: riepilogo.cassaOperativa,
+    dipendenti: staff,
+    costiFissiMensili,
+    foodCostPct: 0.32,
+  };
+
+  const tesoreria = nuovaTesoreria(riepilogo.cassaOperativa, cfg);
+  tesoreria.fidoMax = riepilogo.fidoTotale;
+
+  const stato: StatoPartita = {
     seed: c.seed,
     contatoreRng: 1,
     annoGioco: 1,
     annoCalendario: c.annoCalendario,
-    mese: 1,
+    mese,
     ristorante,
-    locale: c.locale,
+    locale: {
+      postiASedere: c.annuncio.postiStimati,
+      turniMax: 2.2,
+      giornoChiusura: 1,
+      scontrinoMedioBase: 26,
+      tipoLocalita: c.annuncio.posizioneCommerciale === "ottima" ? "riviera"
+                  : c.annuncio.posizioneCommerciale === "normale" ? "citta" : "paese",
+      listino: 1,
+      elasticitaPrezzo: -1.2,
+      tassoBase: 0.38 * (c.annuncio.passaggio ?? 1),
+      indicePrezziMenu: 1,
+    },
     staff,
-    stileLocale: c.stileLocale ?? "trattoria_classica",
-    mercato: generaMercato(1, { pressioneStagionale: 1 }, rng, 5),
+    stileLocale: c.stileLocale,
+    mercato: generaMercato(mese, { pressioneStagionale: 1 }, rng, 5),
+    tfrPerDipendente: {},
+    mkt: { spesaTradizionaleMese: 0, spesaSocialMese: 0, seguitoSocial: 0 },
+    scelte: {
+      qualitaMaterie: "standard",
+      condizioneLocale: c.annuncio.stato === "chiavi_in_mano" ? 88
+                      : c.annuncio.stato === "buono" ? 72
+                      : c.annuncio.stato === "grezzo" ? 55 : 40,
+      manutenzioneMese: 0,
+      servizi: [],
+    },
+    macro: c.macro,
     macroStato: inizializzaMacro(c.datiIstat ?? {
       inflazioneAnnua: 0.018, inflazioneAlimentare: 0.022,
       fiduciaConsumatori: 0.98, crescitaSalariAnnua: 0.012,
       fonte: "fallback", aggiornatoAl: "n/d",
     }),
     foodCostBase: 0.32,
-    titolare: nuovoTitolare(c.titolare?.nome ?? "Il Titolare", c.titolare?.eta ?? 35, c.titolare?.sesso ?? "M"),
+    menu: [],
+    titolare: nuovoTitolare(c.titolare.nome, c.titolare.eta, c.titolare.sesso),
     compiti: { ...COMPITI_DEFAULT },
     domande: [],
     nuoveAssunzioniAnno: 0,
     haAvutoSanzioniLavoro: false,
-    tfrPerDipendente: {},
-    mkt: { spesaTradizionaleMese: 0, spesaSocialMese: 0, seguitoSocial: 0 },
-    scelte: { qualitaMaterie: "standard", condizioneLocale: 70, manutenzioneMese: 0, servizi: [] },
-    menu: [],
-    macro: c.macro,
-    reputazione: 0.35, // si parte sconosciuti
-    tesoreria: nuovaTesoreria(ristorante.cassa, cfg),
-    costiFissiBase: c.costiFissiMensili,
+    capitaleVersato: riepilogo.capitaleVersato,
+    commercialista,
+    immobile: {
+      titolo: c.annuncio.titolo, comune: c.annuncio.comune, zona: c.annuncio.descrizioneZona,
+      canoneMensile: c.annuncio.canoneMensile, prezzoVendita: c.annuncio.prezzoVendita,
+      avviamento: c.annuncio.avviamento,
+    },
+    reputazione: 0.35,
+    tesoreria,
+    costiFissiBase: costiFissiMensili,
     fiscale: { ricavi: 0, costiDeducibili: 0 },
     gameOver: false,
   };
+
+  (stato as any).__logCostituzione = [...esitiAssunzioni, ...riepilogo.avvisi];
+  return stato;
+}
+
+/** Il pool di candidati da mostrare nel wizard. */
+export function candidatiIniziali(seed: number, mese: number) {
+  return poolIniziale(mese, mulberry32(seed ^ 0x5eed));
 }
 
 // ─────────────────────────────────────────────── Il turno
@@ -266,7 +377,7 @@ export function avanzaMese(
     const drift = s.foodCostBase > 0 ? s.ristorante.foodCostPct / s.foodCostBase : 1;
     s.foodCostBase = FOOD_COST[s.scelte.qualitaMaterie];
     s.ristorante.foodCostPct = s.foodCostBase * drift;
-  }
+    }
   }
 
   // ── Offerte ai candidati del mercato
@@ -510,7 +621,7 @@ export function avanzaMese(
   // ── 9. Dicembre: chiusura d'anno
   let chiusuraAnno: string[] | undefined;
   if (s.mese === 12) {
-    const amm = ammCommercialista(s.ristorante.forma, cfg) + cfg.amministrazione.ccIaaAnnuale;
+    const amm = s.commercialista.costoAnnuo + cfg.amministrazione.ccIaaAnnuale;
     s.tesoreria.saldo -= amm;
     s.fiscale.costiDeducibili += amm;
     const ch = chiusuraAnnuale(s.ristorante, s.fiscale.ricavi, s.fiscale.costiDeducibili, cfg);
