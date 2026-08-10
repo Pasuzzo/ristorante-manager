@@ -7,6 +7,7 @@ import Dashboard from '@/pages/game/Dashboard';
 import Titolare from '@/pages/game/Titolare';
 import Staff from '@/pages/game/Staff';
 import Mercato from '@/pages/game/Mercato';
+import Bandi from '@/pages/game/Bandi';
 import Decisioni from '@/pages/game/Decisioni';
 import Bilancio from '@/pages/game/Bilancio';
 import MenuPage from '@/pages/game/Menu';
@@ -28,6 +29,7 @@ function defaultDecisioni(stato) {
     menu: stato?.menu ?? [],
     compiti: stato?.compiti ?? {},
     offerte: [],
+    domande: [],
   };
 }
 
@@ -36,6 +38,7 @@ const TABS = [
   { key: 'titolare', label: 'Titolare', icon: 'chef' },
   { key: 'staff', label: 'Staff', icon: 'users' },
   { key: 'mercato', label: 'Mercato', icon: 'cart' },
+  { key: 'bandi', label: 'Bandi', icon: 'envelope' },
   { key: 'decisioni', label: 'Decisioni', icon: 'mega' },
   { key: 'bilancio', label: 'Bilancio', icon: 'coin' },
   { key: 'menu', label: 'Menu', icon: 'fork' },
@@ -145,6 +148,7 @@ export default function Partita() {
         {tab === 'titolare' && <Titolare stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'staff' && <Staff stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'mercato' && <Mercato stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
+        {tab === 'bandi' && <Bandi stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'decisioni' && <Decisioni stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'bilancio' && <Bilancio stato={stato} partita={partita} />}
         {tab === 'menu' && <MenuPage stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
@@ -161,7 +165,7 @@ export default function Partita() {
 
       {/* Bottom nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-30 rm-card-dark rm-no-radius border-t-[4px] border-rm-wood-dark">
-        <div className="max-w-3xl mx-auto grid grid-cols-4 sm:grid-cols-7">
+        <div className="max-w-3xl mx-auto grid grid-cols-4 sm:grid-cols-8">
           {TABS.map((t) => {
             const on = tab === t.key;
             return (
