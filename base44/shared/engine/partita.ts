@@ -15,13 +15,28 @@
 import { FISCAL_2026, FiscalConfig } from "./fiscal-config.ts";
 import { Ristorante, chiusuraAnnuale, costituisci, FormaGiuridica, fmt } from "./engine.ts";
 import { Tesoreria, nuovaTesoreria, tickCassa, registraChiusura, liquidaTfr } from "./tesoreria.ts";
-import { generaRicaviMese, ProfiloLocale, StatoMarketing, ContestoMacro } from "./ricavi.ts";
+import { generaRicaviMese, ProfiloLocale, StatoMarketing, ContestoMacro, GiornoSimulato } from "./ricavi.ts";
 import {
   DipendenteEsteso, nuovoDipendente, performanceStaff, serviCoperti,
   aggiornaMorale, gradimentoMese, aggiornaReputazione, aggiornaLocale,
   ScelteGestione, QualitaMaterie, Servizio, FOOD_COST,
 } from "./reputazione.ts";
 import { Ricetta, analizzaMenu } from "./ricette.ts";
+import {
+  StatoMacro, DatiPartenza, inizializzaMacro, avanzaMacro,
+  inflazioneMensile, inflazioneAlimentareMensile, fattoreDomanda,
+} from "./macro.ts";
+import {
+  Titolare, Sesso, GestioneCompiti, COMPITI_DEFAULT, EFFETTI_COMPITI,
+  EFFETTI_BURNOUT, nuovoTitolare, titolareComeDipendente, aggiornaStress,
+  moltGradimentoBurnout,
+} from "./titolare.ts";
+import { dinamicheCarriera, DipendenteConCarriera, QUOTA_COSTO_CONGEDO } from "./comportamenti.ts";
+import {
+  Candidato, Offerta, EsitoOfferta, Stile, RuoloEsteso,
+  generaMercato, valutaOfferta, assumi as assumiCandidato,
+  aggiornaAdattamento, eventiDipendenti, EventoDipendente,
+} from "./mercato.ts";
 
 // ─────────────────────────────────────────────── Stato di partita
 
@@ -34,6 +49,10 @@ export interface StatoPartita {
   ristorante: Ristorante;
   locale: ProfiloLocale;
   staff: DipendenteEsteso[];
+  /** stile del locale: i dipendenti con stile diverso rendono meno finché non si adattano */
+  stileLocale: Stile;
+  /** candidati disponibili questo mese (rigenerati a ogni turno) */
+  mercato: Candidato[];
   /** TFR maturato per dipendente (per liquidarlo a fine rapporto) */
   tfrPerDipendente: Record<string, number>;
   mkt: StatoMarketing;
@@ -41,6 +60,12 @@ export interface StatoPartita {
   /** il menu del ristorante: se presente, food cost e scontrino vengono dalle ricette */
   menu: Ricetta[];
   macro: ContestoMacro;
+  /** economia viva: parte dal dato Istat reale e poi deriva dal seed */
+  macroStato: StatoMacro;
+  titolare: Titolare;
+  compiti: GestioneCompiti;
+  /** food cost base scelto dal giocatore, prima dell'inflazione alimentare */
+  foodCostBase: number;
   reputazione: number; // 0..1
   tesoreria: Tesoreria;
   /** costi fissi base (affitto, utenze) — l'inflazione li erode qui */
@@ -68,11 +93,16 @@ export interface DecisioniMese {
   manutenzioneMese?: number;
   servizi?: Servizio[];
   listino?: number; // 1 = in linea col mercato
+  /** assunzioni dal mercato: offerte fatte ai candidati visibili */
+  offerte?: Offerta[];
+  /** assunzioni dirette (debug/scenari): saltano il mercato */
   assunzioni?: NuovaAssunzione[];
   licenziamenti?: string[]; // id dipendenti
   aumenti?: Array<{ id: string; superminimo: number }>;
   /** spesa una tantum: +1 punto condizione locale ogni 250€ */
   ristrutturazione?: number;
+  /** come il titolare organizza i compiti (delega vs fai-da-te) */
+  compiti?: Partial<GestioneCompiti>;
   /** nuovo menu (ricette + prezzi di vendita decisi dal giocatore) */
   menu?: Ricetta[];
 }
@@ -80,6 +110,9 @@ export interface DecisioniMese {
 export interface ReportMese {
   annoGioco: number;
   mese: number;
+  /** giorno per giorno — il client li riproduce a 2-3s l'uno con play/pausa.
+   *  copertiServitiGiorno tiene conto del cap di capacità dello staff. */
+  giorni: Array<GiornoSimulato & { copertiServitiGiorno: number; ricaviGiorno: number }>;
   copertiDomanda: number;
   copertiServiti: number;
   clientiRespinti: number;
@@ -91,8 +124,18 @@ export interface ReportMese {
   seguitoSocial: number;
   staff: Array<{ id: string; nome: string; ruolo: string; morale: number; inRegola: boolean }>;
   eventi: string[];
+  /** eventi generati dalle persone (tratti, famiglia, vizi) */
+  eventiPersonali: EventoDipendente[];
+  /** candidati disponibili il mese prossimo */
+  mercato: Candidato[];
+  /** esito delle offerte fatte questo mese */
+  esitiOfferte: Array<{ candidatoId: string; nome: string } & EsitoOfferta>;
   chiusuraAnno?: string[];
   gameOver: boolean;
+  /** stato dell'economia questo mese, per la dashboard */
+  macro: { inflazione: number; inflazioneAlimentare: number; fiducia: number; salari: number; shock?: string };
+  /** scheda del titolare, per la dashboard */
+  titolare: { nome: string; eta: number; sesso: string; stress: number; burnout: boolean; compiti: GestioneCompiti };
 }
 
 // ─────────────────────────────────────────────── RNG deterministico
@@ -117,6 +160,10 @@ export interface ConfigNuovaPartita {
   macro: ContestoMacro;
   annoCalendario: number; // es. 2026
   seed: number;
+  stileLocale?: Stile;
+  /** fotografia Istat scattata alla creazione della partita */
+  datiIstat?: DatiPartenza;
+  titolare?: { nome: string; eta: number; sesso: Sesso };
   staffIniziale?: NuovaAssunzione[];
 }
 
@@ -135,6 +182,16 @@ export function nuovaPartita(c: ConfigNuovaPartita, cfg: FiscalConfig = FISCAL_2
     ristorante,
     locale: c.locale,
     staff,
+    stileLocale: c.stileLocale ?? "trattoria_classica",
+    mercato: generaMercato(1, { pressioneStagionale: 1 }, rng, 5),
+    macroStato: inizializzaMacro(c.datiIstat ?? {
+      inflazioneAnnua: 0.018, inflazioneAlimentare: 0.022,
+      fiduciaConsumatori: 0.98, crescitaSalariAnnua: 0.012,
+      fonte: "fallback", aggiornatoAl: "n/d",
+    }),
+    foodCostBase: 0.32,
+    titolare: nuovoTitolare(c.titolare?.nome ?? "Il Titolare", c.titolare?.eta ?? 35, c.titolare?.sesso ?? "M"),
+    compiti: { ...COMPITI_DEFAULT },
     tfrPerDipendente: {},
     mkt: { spesaTradizionaleMese: 0, spesaSocialMese: 0, seguitoSocial: 0 },
     scelte: { qualitaMaterie: "standard", condizioneLocale: 70, manutenzioneMese: 0, servizi: [] },
@@ -161,6 +218,16 @@ export function avanzaMese(
   s.contatoreRng++;
 
   // ── 1. Applica le decisioni del giocatore
+  if (dec.compiti) s.compiti = { ...s.compiti, ...dec.compiti };
+  // in burnout le decisioni "di visione" vengono ignorate: non ce la fa
+  if (s.titolare.burnout) {
+    const bloccate: string[] = [];
+    if (dec.ristrutturazione) { delete dec.ristrutturazione; bloccate.push("ristrutturazione"); }
+    if (dec.listino !== undefined) { delete dec.listino; bloccate.push("listino"); }
+    if (dec.servizi) { delete dec.servizi; bloccate.push("servizi"); }
+    if (dec.qualitaMaterie) { delete dec.qualitaMaterie; bloccate.push("qualità materie"); }
+    if (bloccate.length) eventi.push(`🔥 In burnout non riesci a occuparti di: ${bloccate.join(", ")}. Prima rimettiti in piedi (delega, riposa).`);
+  }
   if (dec.spesaTradizionale !== undefined) s.mkt.spesaTradizionaleMese = Math.max(0, dec.spesaTradizionale);
   if (dec.spesaSocial !== undefined) s.mkt.spesaSocialMese = Math.max(0, dec.spesaSocial);
   if (dec.qualitaMaterie) s.scelte.qualitaMaterie = dec.qualitaMaterie;
@@ -178,7 +245,27 @@ export function avanzaMese(
     fattoreEsecuzione = m.fattoreEsecuzione;
     eventi.push(...m.avvisi);
   } else {
-    s.ristorante.foodCostPct = FOOD_COST[s.scelte.qualitaMaterie];
+    if (dec.qualitaMaterie) {
+    // cambiando qualità si riparte dal food cost nominale, già adeguato
+    // all'inflazione alimentare accumulata finora
+    const drift = s.foodCostBase > 0 ? s.ristorante.foodCostPct / s.foodCostBase : 1;
+    s.foodCostBase = FOOD_COST[s.scelte.qualitaMaterie];
+    s.ristorante.foodCostPct = s.foodCostBase * drift;
+  }
+  }
+
+  // ── Offerte ai candidati del mercato
+  const esitiOfferte: Array<{ candidatoId: string; nome: string } & EsitoOfferta> = [];
+  for (const off of dec.offerte ?? []) {
+    const c = s.mercato.find((x) => x.id === off.candidatoId);
+    if (!c) { eventi.push(`⚠️ Candidato non più disponibile.`); continue; }
+    const esito = valutaOfferta(c, off, rng);
+    esitiOfferte.push({ candidatoId: c.id, nome: c.nome, ...esito });
+    eventi.push(esito.accettata ? `🤝 ${esito.motivo}` : `❌ ${esito.motivo}`);
+    if (esito.accettata) {
+      s.staff.push(assumiCandidato(c, off, esito) as unknown as DipendenteEsteso);
+      s.mercato = s.mercato.filter((x) => x.id !== c.id);
+    }
   }
 
   for (const a of dec.assunzioni ?? []) {
@@ -203,11 +290,40 @@ export function avanzaMese(
     eventi.push(`🔨 Ristrutturazione: ${fmt(dec.ristrutturazione)} → locale a ${Math.round(s.scelte.condizioneLocale)}/100`);
   }
 
+  // ── 1bis. L'economia si muove: inflazione, salari, fiducia, canoni
+  const esitoMacro = avanzaMacro(s.macroStato, s.mese, s.annoGioco, rng);
+  eventi.push(...esitoMacro.eventi);
+  s.macro.fiduciaConsumatori = fattoreDomanda(s.macroStato);
+  s.macro.crescitaSalariAnnua = s.macroStato.crescitaSalariAnnua;
+  // il food cost segue l'inflazione ALIMENTARE, non quella generale
+  s.ristorante.foodCostPct = Math.min(0.75,
+    s.ristorante.foodCostPct * (1 + inflazioneAlimentareMensile(s.macroStato)));
+  // adeguamento ISTAT del canone (una volta l'anno, 75%)
+  if (esitoMacro.adeguamentoCanone > 1) s.costiFissiBase *= esitoMacro.adeguamentoCanone;
+  // il menu si adegua all'inflazione GENERALE, il food cost a quella ALIMENTARE:
+  // quando l'alimentare corre di più, il margine si stringe. È la morse vera.
+  s.locale.indicePrezziMenu = (s.locale.indicePrezziMenu ?? 1) * (1 + inflazioneMensile(s.macroStato));
+
   // ── 2. Domanda e coperti serviti
   const r = generaRicaviMese(s.locale, s.mkt, s.macro, cfg, s.annoCalendario, s.annoGioco, s.mese, s.reputazione, rng);
-  const perf = performanceStaff(s.staff);
+  // il titolare che copre un ruolo conta come un membro della squadra
+  const squadraOperativa = s.compiti.ruoloCoperto
+    ? [...s.staff, titolareComeDipendente(s.titolare, s.compiti.ruoloCoperto)]
+    : s.staff;
+  // chi è in congedo non è operativo
+  const idCongedo = new Set(((s as any).__inCongedo as string[]) ?? []);
+  const perf = performanceStaff(squadraOperativa.filter((d) => !idCongedo.has(d.id)));
   perf.cucina = Math.min(1, perf.cucina * fattoreEsecuzione); // il menu giusto (o sbagliato) per la brigata
-  const { serviti, respinti } = serviCoperti(r.copertiTotali, perf);
+  let { serviti, respinti } = serviCoperti(r.copertiTotali, perf);
+  // burnout prolungato: il fisico può cedere — giorni a letto, locale a mezzo servizio
+  if (s.titolare.burnout && s.titolare.mesiInBurnout >= EFFETTI_BURNOUT.mesiPrimaDelCrollo
+      && rng() < EFFETTI_BURNOUT.probCrolloMensile) {
+    const persi = Math.round(serviti * (1 - EFFETTI_BURNOUT.tagliaServiti));
+    serviti = Math.round(serviti * EFFETTI_BURNOUT.tagliaServiti);
+    s.compiti.ruoloCoperto = null; // il medico è categorico
+    s.titolare.stress = Math.max(40, s.titolare.stress - 20); // riposo forzato
+    eventi.push(`🏥 Il fisico ha ceduto: ${s.titolare.nome} a letto una settimana, locale a mezzo servizio (${persi} coperti persi). Il medico impone di mollare i turni operativi.`);
+  }
   const ricaviLordi = serviti * r.scontrinoMedio;
   eventi.push(...r.eventi);
   if (respinti > serviti * 0.1) eventi.push(`🚪 ${respinti} clienti respinti: capienza o staff insufficienti`);
@@ -230,15 +346,48 @@ export function avanzaMese(
   }
 
   // ── 4. Gradimento, locale, morale, reputazione
+  let moltStile = 1, nStile = 0;
+  for (const d of s.staff as Array<DipendenteEsteso & { stile?: Stile; adattamentoStile?: number }>) {
+    if (!d.stile) continue;
+    if (d.adattamentoStile === undefined) d.adattamentoStile = 0;
+    const ad = aggiornaAdattamento(d as Required<typeof d>, s.stileLocale);
+    moltStile += ad.moltiplicatore; nStile++;
+    if (ad.evento) eventi.push(`🎯 ${d.nome} ${ad.evento}.`);
+  }
+  // media dei moltiplicatori di adattamento: chi stona con lo stile del locale pesa
+  const fattoreStile = nStile ? (moltStile - 1) / nStile : 1;
+
   const grad = gradimentoMese(perf, s.scelte, serviti);
+  grad.voto = Math.max(0.05, Math.min(1, grad.voto * fattoreStile * (s.titolare.burnout ? moltGradimentoBurnout(s.titolare.mesiInBurnout) : 1)));
   eventi.push(...grad.eventi);
   eventi.push(...aggiornaLocale(s.scelte, serviti));
+  // ── Adattamento allo stile del locale
+
+  // ── Eventi personali: tratti, vizi, famiglia
+  const eventiPersonali = eventiDipendenti(s.staff as any, rng);
+  for (const ev of eventiPersonali) {
+    eventi.push(ev.testo);
+    const d = s.staff.find((x) => x.id === ev.dipendenteId);
+    if (d && ev.effetti.moraleDelta) d.morale = Math.max(5, Math.min(95, d.morale + ev.effetti.moraleDelta));
+    if (ev.effetti.moraleBrigata) for (const x of s.staff) x.morale = Math.max(5, Math.min(95, x.morale + ev.effetti.moraleBrigata));
+    if (ev.effetti.reputazioneDelta) s.reputazione = Math.max(0.02, Math.min(0.98, s.reputazione + ev.effetti.reputazioneDelta));
+    if (ev.effetti.costo) s.tesoreria.saldo -= ev.effetti.costo;
+    if (ev.effetti.attributoUp && d) d.attributi[ev.effetti.attributoUp] = Math.min(20, d.attributi[ev.effetti.attributoUp] + 1);
+  }
+
   const morale = aggiornaMorale(s.staff, {
     caricoLavoro: serviti / perf.capacitaCoperti,
     riposoSettimanale: s.locale.giornoChiusura !== null,
   }, rng);
   eventi.push(...morale.eventi);
   for (const d of morale.dimissionari) liquidaTfrDi(s, d.id, d.inRegola, eventi);
+  // ── Le vite dei dipendenti: crescita, maternità, costo della vita
+  const idAumentati = new Set((dec.aumenti ?? []).map((a) => a.id));
+  const carriere = dinamicheCarriera(s.staff as DipendenteConCarriera[], s.macroStato.inflazioneAnnua, idAumentati, rng);
+  eventi.push(...carriere.eventi);
+  for (const d of carriere.dimissionari) cessaRapporto(s, d.id, "dimissioni (richiesta ignorata)", eventi);
+  (s as any).__inCongedo = carriere.inCongedo;
+
   const repUpd = aggiornaReputazione(s.reputazione, grad.voto, serviti, s.mkt);
   s.reputazione = repUpd.rep;
   eventi.push(...repUpd.eventi);
@@ -251,13 +400,54 @@ export function avanzaMese(
   }
 
   // ── 6. Tesoreria: cassa con scadenze reali
-  s.ristorante.dipendenti = s.staff; // la tesoreria paga gli stipendi da qui
-  const inflMensile = Math.pow(1 + cfg.inflazioneAnnua, 1 / 12) - 1;
-  s.costiFissiBase *= 1 + inflMensile;
+  // ── Effetti dei compiti del titolare
+  const EC = EFFETTI_COMPITI;
+  const deltaFoodCompiti = EC.approvvigionamento[s.compiti.approvvigionamento].costoFoodCost;
+  const costiCompiti =
+    (s.compiti.amministrazione === "delegata" ? EC.amministrazione.delegata.costoMese : 0) +
+    (s.compiti.prenotazioni === "software" ? EC.prenotazioni.software.costoMese : 0) +
+    (s.compiti.social === "delegato" ? EC.social.delegato.costoMese : 0);
+  // il social fatto dal titolare a mezzanotte rende meno
+  if (s.compiti.social === "titolare") {
+    s.mkt.seguitoSocial *= 1; // lo stock resta; è l'efficacia della spesa a calare
+  }
+
+  // ── Stress e burnout del titolare
+  const moraleMedio = s.staff.length ? s.staff.reduce((a, d) => a + d.morale, 0) / s.staff.length : 50;
+  const esitoStress = aggiornaStress(s.titolare, {
+    compiti: s.compiti,
+    caricoLavoro: serviti / Math.max(1, perf.capacitaCoperti),
+    cassaInRosso: s.tesoreria.saldo < 0,
+    eventiPesanti: (sanzioni > 0 ? 1 : 0) + carriere.dimissionari.length,
+    riposoSettimanale: s.locale.giornoChiusura !== null,
+    haDirettore: s.staff.some((d) => d.ruolo === "direttore" && d.morale > 45),
+    moraleMedioSquadra: moraleMedio,
+  }, rng);
+  eventi.push(...esitoStress.eventi);
+  let costoErroriTitolare = esitoStress.costoErrori;
+  if (s.titolare.burnout) {
+    for (const d of s.staff) d.morale = Math.max(5, d.morale - EFFETTI_BURNOUT.malusMoraleSquadra);
+    if (rng() < EFFETTI_BURNOUT.probErroreOperativo) {
+      const c = EFFETTI_BURNOUT.costoErroreMin + Math.round(rng() * (EFFETTI_BURNOUT.costoErroreMax - EFFETTI_BURNOUT.costoErroreMin));
+      costoErroriTitolare += c;
+      eventi.push(`🥴 Ordine sbagliato al fornitore: merce da buttare, ${c}€.`);
+    }
+  }
+
+  s.ristorante.dipendenti = s.staff.filter((d) => !idCongedo.has(d.id)); // in congedo paga (qu quasi tutto) l'INPS
+  s.costiFissiBase *= 1 + inflazioneMensile(s.macroStato);
   s.ristorante.costiFissiMensili =
     s.costiFissiBase + s.mkt.spesaTradizionaleMese + s.mkt.spesaSocialMese +
     s.scelte.manutenzioneMese + (dec.ristrutturazione ?? 0);
-  tickCassa(s.ristorante, s.tesoreria, { anno: s.annoGioco, mese: s.mese, ricaviLordi, sanzioni }, cfg);
+  const foodCostSalvato = s.ristorante.foodCostPct;
+  s.ristorante.foodCostPct = Math.max(0.15, Math.min(0.75, s.ristorante.foodCostPct + deltaFoodCompiti));
+  tickCassa(s.ristorante, s.tesoreria, { anno: s.annoGioco, mese: s.mese, ricaviLordi, sanzioni: sanzioni + costoErroriTitolare + costiCompiti }, cfg);
+  s.ristorante.foodCostPct = foodCostSalvato;
+  // quota ridotta per chi è in congedo: l'azienda paga ~25%
+  for (const d of s.staff.filter((x) => idCongedo.has(x.id) && x.inRegola)) {
+    const lordo = cfg.ccnlLordoMensile[d.ruolo] * d.superminimo;
+    s.tesoreria.saldo -= lordo * QUOTA_COSTO_CONGEDO;
+  }
 
   // ── 7. Accumulo fiscale di competenza
   const forfait = s.ristorante.forma === "ditta_forfettaria";
@@ -304,9 +494,23 @@ export function avanzaMese(
     eventi.push("💀 GAME OVER — la banca chiude i rubinetti.");
   }
 
+  // ── Nuovo bacino di candidati per il mese prossimo
+  const altaStagione = s.mese >= 5 && s.mese <= 8;
+  s.mercato = generaMercato(s.mese, {
+    qualitaBacino: altaStagione ? 0.7 : 1.1,
+    pressioneStagionale: altaStagione ? 1.3 : 1,
+  }, rng, altaStagione ? 3 : 6);
+
+  const quotaServita = r.copertiTotali > 0 ? serviti / r.copertiTotali : 0;
+  const giorniReport = r.giorni.map((g) => {
+    const servitiG = Math.round(g.copertiDomanda * quotaServita);
+    return { ...g, copertiServitiGiorno: servitiG, ricaviGiorno: servitiG * r.scontrinoMedio };
+  });
+
   const report: ReportMese = {
     annoGioco: s.mese === 12 ? s.annoGioco - 1 : s.annoGioco,
     mese: s.mese,
+    giorni: giorniReport,
     copertiDomanda: r.copertiTotali,
     copertiServiti: serviti,
     clientiRespinti: respinti,
@@ -318,8 +522,23 @@ export function avanzaMese(
     seguitoSocial: Math.round(s.mkt.seguitoSocial),
     staff: s.staff.map((d) => ({ id: d.id, nome: d.nome, ruolo: d.ruolo, morale: Math.round(d.morale), inRegola: d.inRegola })),
     eventi,
+    eventiPersonali,
+    mercato: s.mercato,
+    esitiOfferte,
     chiusuraAnno,
     gameOver: s.gameOver,
+    titolare: {
+      nome: s.titolare.nome, eta: s.titolare.eta, sesso: s.titolare.sesso,
+      stress: Math.round(s.titolare.stress), burnout: s.titolare.burnout,
+      compiti: s.compiti,
+    },
+    macro: {
+      inflazione: s.macroStato.inflazioneAnnua,
+      inflazioneAlimentare: s.macroStato.inflazioneAlimentare,
+      fiducia: s.macroStato.fiduciaConsumatori,
+      salari: s.macroStato.crescitaSalariAnnua,
+      shock: s.macroStato.shockAttivo?.nome,
+    },
   };
 
   s.mese = s.mese === 12 ? 1 : s.mese + 1;
