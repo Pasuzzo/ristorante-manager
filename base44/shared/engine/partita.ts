@@ -34,7 +34,8 @@ import {
 import { dinamicheCarriera, DipendenteConCarriera, QUOTA_COSTO_CONGEDO } from "./comportamenti.ts";
 import {
   OpzioneCommercialista, LivelloCommercialista, opzioniCommercialista,
-  riepilogaCostituzione, regoleCapitale, effettiCapitale, poolIniziale, verificaBrigata,
+  riepilogaCostituzione, regoleCapitale, effettiCapitale, poolIniziale, poolCompleto,
+  rispondiOfferta, verificaBrigata,
 } from "./costituzione.ts";
 import { Annuncio, annuncioAConfigLocale } from "./immobili.ts";
 import { ConfigLocale, calcolaPianoCosti } from "./costi-avvio.ts";
@@ -43,10 +44,6 @@ import {
   EsitoOfferta, Stile, RuoloEsteso,
   generaMercato, aggiornaAdattamento, eventiDipendenti, EventoDipendente,
 } from "./mercato.ts";
-import {
-  CATALOGO_ESEMPIO, Bando, Domanda, ProfiloRichiedente,
-  verificaEleggibilita, presentaDomanda, avanzaDomande,
-} from "./bandi.ts";
 
 // ─────────────────────────────────────────────── Stato di partita
 
@@ -79,12 +76,6 @@ export interface StatoPartita {
   commercialista: OpzioneCommercialista;
   /** l'annuncio scelto in fase di costituzione */
   immobile?: { titolo: string; comune: string; zona: string; canoneMensile?: number; prezzoVendita?: number; avviamento?: number };
-  /** pratiche di agevolazione in corso (bandi) */
-  domande: Domanda[];
-  /** assunzioni regolari effettuate nell'anno in corso (per bandi occupazione) */
-  nuoveAssunzioniAnno: number;
-  /** flag: sanzioni per lavoro irregolare subite (preclude alcuni bandi) */
-  haAvutoSanzioniLavoro: boolean;
   /** food cost base scelto dal giocatore, prima dell'inflazione alimentare */
   foodCostBase: number;
   reputazione: number; // 0..1
@@ -126,8 +117,6 @@ export interface DecisioniMese {
   compiti?: Partial<GestioneCompiti>;
   /** nuovo menu (ricette + prezzi di vendita decisi dal giocatore) */
   menu?: Ricetta[];
-  /** domande di agevolazione da presentare questo mese (bandoId + investimento) */
-  domande?: Array<{ bandoId: string; investimentoPrevisto: number }>;
 }
 
 export interface ReportMese {
@@ -305,9 +294,6 @@ export function nuovaPartita(c: ConfigNuovaPartita, cfg: FiscalConfig = FISCAL_2
     menu: [],
     titolare: nuovoTitolare(c.titolare.nome, c.titolare.eta, c.titolare.sesso),
     compiti: { ...COMPITI_DEFAULT },
-    domande: [],
-    nuoveAssunzioniAnno: 0,
-    haAvutoSanzioniLavoro: false,
     capitaleVersato: riepilogo.capitaleVersato,
     commercialista,
     immobile: {
@@ -326,10 +312,14 @@ export function nuovaPartita(c: ConfigNuovaPartita, cfg: FiscalConfig = FISCAL_2
   return stato;
 }
 
-/** Il pool di candidati da mostrare nel wizard. */
+/** Il pool COMPLETO di candidati per il wizard: almeno una scelta per
+ *  ogni mansione, così la brigata si può comporre come si vuole. */
 export function candidatiIniziali(seed: number, mese: number) {
-  return poolIniziale(mese, mulberry32(seed ^ 0x5eed));
+  return poolCompleto(mese, mulberry32(seed ^ 0x5eed));
 }
+
+/** Risposta immediata a un'offerta fatta in fase di costituzione. */
+export { rispondiOfferta };
 
 // ─────────────────────────────────────────────── Il turno
 
@@ -377,7 +367,7 @@ export function avanzaMese(
     const drift = s.foodCostBase > 0 ? s.ristorante.foodCostPct / s.foodCostBase : 1;
     s.foodCostBase = FOOD_COST[s.scelte.qualitaMaterie];
     s.ristorante.foodCostPct = s.foodCostBase * drift;
-    }
+  }
   }
 
   // ── Offerte ai candidati del mercato
@@ -390,7 +380,6 @@ export function avanzaMese(
     eventi.push(esito.accettata ? `🤝 ${esito.motivo}` : `❌ ${esito.motivo}`);
     if (esito.accettata) {
       s.staff.push(assumiCandidato(c, off, esito) as unknown as DipendenteEsteso);
-      s.nuoveAssunzioniAnno++;
       s.mercato = s.mercato.filter((x) => x.id !== c.id);
     }
   }
@@ -401,7 +390,6 @@ export function avanzaMese(
       DipendenteEsteso & { stagionaleFinoAlMese?: number };
     d.stagionaleFinoAlMese = a.stagionaleFinoAlMese;
     s.staff.push(d);
-    if (a.inRegola) s.nuoveAssunzioniAnno++;
     eventi.push(`📝 Assunzione: ${a.nome} (${a.ruolo}${a.inRegola ? "" : ", IN NERO"}${a.stagionaleFinoAlMese ? `, stagionale fino a M${a.stagionaleFinoAlMese}` : ""})`);
   }
   for (const id of dec.licenziamenti ?? []) cessaRapporto(s, id, "licenziato", eventi);
@@ -416,21 +404,6 @@ export function avanzaMese(
   if (dec.ristrutturazione && dec.ristrutturazione > 0) {
     s.scelte.condizioneLocale = Math.min(100, s.scelte.condizioneLocale + dec.ristrutturazione / 250);
     eventi.push(`🔨 Ristrutturazione: ${fmt(dec.ristrutturazione)} → locale a ${Math.round(s.scelte.condizioneLocale)}/100`);
-  }
-
-  // ── Bandi: presentazione domande di agevolazione
-  for (const dom of dec.domande ?? []) {
-    const b = CATALOGO_ESEMPIO.find((x) => x.id === dom.bandoId);
-    if (!b) { eventi.push(`⚠️ Bando non trovato.`); continue; }
-    if (s.domande.some((d) => d.bandoId === b.id && d.stato !== "respinta")) { eventi.push(`⚠️ Hai già una domanda per "${b.titolo}".`); continue; }
-    const profilo = profiloRichiedente(s, dom.investimentoPrevisto);
-    const e = verificaEleggibilita(b, profilo);
-    if (!e.ammissibile) { eventi.push(`❌ Bando "${b.titolo}" non ammissibile: ${e.motiviEsclusione[0] ?? "requisiti non soddisfatti"}.`); continue; }
-    const r = presentaDomanda(e, s.annoGioco, s.mese, `dom-${s.contatoreRng}-${b.id}`);
-    if ("errore" in r) { eventi.push(`❌ ${r.errore}`); continue; }
-    s.domande.push(r.domanda);
-    s.tesoreria.saldo -= r.costo;
-    eventi.push(`📨 Domanda presentata: "${b.titolo}" — consulenza ${fmt(r.costo)}, esito in ${b.mesiIstruttoria} mesi.`);
   }
 
   // ── 1bis. L'economia si muove: inflazione, salari, fiducia, canoni
@@ -484,7 +457,6 @@ export function avanzaMese(
         sanzioni += lordoAnnuo * (cfg.inps.dipendenti.aliquotaDatore + cfg.inps.dipendenti.inail);
         d.inRegola = true;
       }
-      s.haAvutoSanzioniLavoro = true;
       eventi.push(`🚨 Ispezione! ${irregolari.length} in nero scoperti: ${fmt(sanzioni)} tra sanzioni e recupero contributi. Regolarizzati d'ufficio.`);
     }
   }
@@ -587,13 +559,6 @@ export function avanzaMese(
   s.ristorante.foodCostPct = Math.max(0.15, Math.min(0.75, s.ristorante.foodCostPct + deltaFoodCompiti));
   tickCassa(s.ristorante, s.tesoreria, { anno: s.annoGioco, mese: s.mese, ricaviLordi, sanzioni: sanzioni + costoErroriTitolare + costiCompiti }, cfg);
   s.ristorante.foodCostPct = foodCostSalvato;
-
-  // ── Bandi: istruttorie chiuse e rate erogate
-  const mesiDaDomanda = (d: Domanda) => (s.annoGioco - d.presentataAnno) * 12 + (s.mese - d.presentataMese);
-  const esitoBandi = avanzaDomande(s.domande, CATALOGO_ESEMPIO, mesiDaDomanda, rng);
-  s.tesoreria.saldo += esitoBandi.incasso;
-  eventi.push(...esitoBandi.eventi);
-
   // quota ridotta per chi è in congedo: l'azienda paga ~25%
   for (const d of s.staff.filter((x) => idCongedo.has(x.id) && x.inRegola)) {
     const lordo = cfg.ccnlLordoMensile[d.ruolo] * d.superminimo;
@@ -636,7 +601,6 @@ export function avanzaMese(
     s.ristorante.annoAttivita++;
     s.annoGioco++;
     s.annoCalendario++;
-    s.nuoveAssunzioniAnno = 0;
   }
 
   // ── 10. Game over?
@@ -715,25 +679,6 @@ function liquidaTfrDi(s: StatoPartita, id: string, eraInRegola: boolean, eventi:
     liquidaTfr(s.tesoreria, s.annoGioco, s.mese, quota);
     eventi.push(`💰 Liquidato TFR: ${fmt(quota)}`);
   }
-}
-
-function profiloRichiedente(s: StatoPartita, investimentoPrevisto: number): ProfiloRichiedente {
-  const ricavi = s.fiscale.ricavi > 0 ? s.fiscale.ricavi * (12 / Math.max(1, s.mese)) : 0;
-  return {
-    etaTitolare: s.titolare.eta,
-    titolareFemminile: s.titolare.sesso === "F",
-    anniAttivita: s.ristorante.annoAttivita,
-    formaGiuridica: s.ristorante.forma,
-    ricaviUltimoAnno: ricavi,
-    dipendentiRegolari: s.staff.filter((d) => d.inRegola).length,
-    nuoveAssunzioniAnno: s.nuoveAssunzioniAnno,
-    zona: (s.locale as any).tipoLocalita ?? "",
-    regione: "Emilia-Romagna",
-    investimentoPrevisto,
-    haAccessibilita: false,
-    usaFilieraCorta: false,
-    haSanzioniLavoro: s.haAvutoSanzioniLavoro,
-  };
 }
 
 function ammCommercialista(forma: FormaGiuridica, cfg: FiscalConfig): number {

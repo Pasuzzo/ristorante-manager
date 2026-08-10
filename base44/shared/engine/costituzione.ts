@@ -17,7 +17,7 @@
  */
 
 import { FormaGiuridica } from "./engine.ts";
-import { Candidato, generaMercato, OpzioniMercato } from "./mercato.ts";
+import { Candidato, generaMercato, generaCandidato, RuoloEsteso, OpzioniMercato, Offerta, valutaOfferta, EsitoOfferta } from "./mercato.ts";
 
 // ─────────────────────────────────────────────── Il commercialista
 
@@ -226,6 +226,81 @@ export interface PoolCostituzione {
  * a giugno trova gli scarti (i bravi lavorano già tutti). È il primo
  * insegnamento del gioco: il momento in cui apri conta.
  */
+/** Tutti i ruoli che devono comparire nel pool, con quante scelte minime. */
+export const COPERTURA_RUOLI: Array<{ ruolo: RuoloEsteso; minimo: number }> = [
+  { ruolo: "chef", minimo: 1 },
+  { ruolo: "sous_chef", minimo: 1 },
+  { ruolo: "cuoco", minimo: 2 },
+  { ruolo: "pizzaiolo", minimo: 1 },
+  { ruolo: "pasticcere", minimo: 1 },
+  { ruolo: "commis", minimo: 2 },
+  { ruolo: "lavapiatti", minimo: 2 },
+  { ruolo: "maitre", minimo: 1 },
+  { ruolo: "chef_de_rang", minimo: 1 },
+  { ruolo: "cameriere", minimo: 3 },
+  { ruolo: "runner", minimo: 2 },
+  { ruolo: "barista", minimo: 2 },
+  { ruolo: "sommelier", minimo: 1 },
+  { ruolo: "direttore", minimo: 1 },
+];
+
+/**
+ * Pool COMPLETO: garantisce almeno N candidati per ogni mansione, così
+ * il giocatore può comporre qualsiasi brigata. La stagione non cambia
+ * QUANTI ce ne sono, ma quanto sono bravi e quanto pretendono.
+ */
+export function poolCompleto(mese: number, rng: () => number): PoolCostituzione {
+  const altaStagione = mese >= 5 && mese <= 8;
+  const opt: OpzioniMercato = {
+    qualitaBacino: altaStagione ? 0.65 : 1.15,
+    pressioneStagionale: altaStagione ? 1.35 : 0.9,
+  };
+  const candidati: Candidato[] = [];
+  let n = 0;
+  for (const { ruolo, minimo } of COPERTURA_RUOLI) {
+    for (let i = 0; i < minimo; i++) {
+      candidati.push(generaCandidato(`ini-${ruolo}-${i}-${n++}`, { ...opt, ruoliCercati: [ruolo] }, rng));
+    }
+  }
+  return {
+    candidati,
+    suggerimento: altaStagione
+      ? "Stai aprendo in alta stagione: c'è gente per ogni ruolo, ma i più bravi lavorano già altrove e chi resta ha pretese alte."
+      : "Bassa stagione: bacino ampio e gente disposta a trattare. È il momento giusto per costruire la brigata.",
+  };
+}
+
+/**
+ * Risposta IMMEDIATA all'offerta, in fase di costituzione.
+ * Se rifiuta, il candidato sparisce dal pool e viene rimpiazzato da uno
+ * nuovo dello stesso ruolo: il posto resta scoperto, non la mansione.
+ */
+export function rispondiOfferta(
+  candidato: Candidato,
+  offerta: Offerta,
+  pool: Candidato[],
+  mese: number,
+  rng: () => number
+): { esito: EsitoOfferta; poolAggiornato: Candidato[]; sostituto?: Candidato } {
+  const esito = valutaOfferta(candidato, offerta, rng);
+  let poolAggiornato = pool.filter((c) => c.id !== candidato.id);
+  let sostituto: Candidato | undefined;
+  if (!esito.accettata) {
+    const altaStagione = mese >= 5 && mese <= 8;
+    sostituto = generaCandidato(
+      `sub-${candidato.ruolo}-${Math.floor(rng() * 1e6)}`,
+      {
+        ruoliCercati: [candidato.ruolo as RuoloEsteso],
+        qualitaBacino: altaStagione ? 0.65 : 1.15,
+        pressioneStagionale: altaStagione ? 1.35 : 0.9,
+      },
+      rng
+    );
+    poolAggiornato = [...poolAggiornato, sostituto];
+  }
+  return { esito, poolAggiornato, sostituto };
+}
+
 export function poolIniziale(mese: number, rng: () => number): PoolCostituzione {
   const altaStagione = mese >= 5 && mese <= 8;
   const opt: OpzioniMercato = {
@@ -252,6 +327,10 @@ export interface RiepilogoCostituzione {
   cassaOperativa: number;
   fidoTotale: number;
   avvisi: string[];
+  /** se il budget non basta o è risicato: quanto servirebbe davvero */
+  budgetConsigliato?: number;
+  /** mesi di autonomia con la cassa che resta */
+  mesiAutonomia: number;
 }
 
 /** Verifica che la brigata sia in grado di aprire davvero. */
@@ -317,8 +396,19 @@ export function riepilogaCostituzione(params: {
     avvisi.push("⚠️ La SRLS non può superare 9.999,99 € di capitale: il resto è stato ignorato.");
   }
 
+  // quanto servirebbe per avere 6 mesi di autonomia, che è il minimo sano
+  const cassaSana = usciteMensili * 6;
+  const budgetConsigliato = cassaOperativa < cassaSana
+    ? Math.ceil((totaleCostituzione + capitaleVersato + cassaSana) / 1000) * 1000
+    : undefined;
+  if (budgetConsigliato) {
+    avvisi.push(`💡 Per partire con 6 mesi di autonomia servirebbero circa ${eur(budgetConsigliato)} (${eur(budgetConsigliato - params.budgetIniziale)} in più di quanto hai messo).`);
+  }
+
   return {
     vociUnaTantum: voci,
+    mesiAutonomia: Math.max(0, mesiDiAutonomia),
+    budgetConsigliato,
     totaleCostituzione,
     capitaleVersato,
     costoCommercialistaAnnuo: params.commercialista.costoAnnuo,

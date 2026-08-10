@@ -20,6 +20,10 @@
  */
 import { createClientFromRequest } from "npm:@base44/sdk";
 import { nuovaPartita } from "../../shared/engine/partita.ts";
+import { riepilogaCostituzione, opzioniCommercialista, regoleCapitale } from "../../shared/engine/costituzione.ts";
+import { annuncioAConfigLocale } from "../../shared/engine/immobili.ts";
+import { calcolaPianoCosti } from "../../shared/engine/costi-avvio.ts";
+import { FISCAL_2026 } from "../../shared/engine/fiscal-config.ts";
 import type { FormaGiuridica } from "../../shared/engine/engine.ts";
 import type { LivelloCommercialista } from "../../shared/engine/costituzione.ts";
 
@@ -57,6 +61,31 @@ export default async function (req: Request): Promise<Response> {
       game_over: false,
     });
 
+    // Ricalcola il riepilogo con le funzioni stesse del motore sui dipendenti
+    // che hanno davvero accettato, per esporre mesiAutonomia e budgetConsigliato
+    // (numeri che il motore calcola ma non attacca allo stato).
+    const forma = (body.forma ?? "ditta_ordinaria") as FormaGiuridica;
+    const budgetIniziale = Number(body.budgetIniziale ?? 150_000);
+    const modalita = body.modalitaImmobile ?? "affitto";
+    const annuncio = body.annuncio ?? {};
+    const piano = calcolaPianoCosti(annuncioAConfigLocale(annuncio, modalita) as any);
+    const canone = annuncio.canoneMensile ?? 0;
+    const fissiSenzaAffitto = piano.mensili
+      .filter((v: any) => !/Affitto locale/.test(v.voce))
+      .reduce((s: number, v: any) => s + v.importo, 0);
+    const costiFissiMensili = fissiSenzaAffitto + (modalita === "affitto" ? canone : 0);
+    const costiLocale = piano.totaleUnaTantum + (annuncio.avviamento ?? 0) + (modalita === "affitto" ? canone * 3 : 0);
+    const commercialista = opzioniCommercialista(forma).find((o) => o.id === (body.commercialista ?? "studio_locale"))
+      ?? opzioniCommercialista(forma)[1];
+    const capitaleSociale = body.capitaleSociale !== undefined ? Number(body.capitaleSociale) : regoleCapitale(forma).minimo;
+    const costoStaffMensile = (stato as any).staff.reduce(
+      (s: number, d: any) => s + FISCAL_2026.ccnlLordoMensile[d.ruolo] * d.superminimo * 1.38, 0);
+    const riepilogo = riepilogaCostituzione({
+      forma, budgetIniziale, costiLocale, capitaleSociale, commercialista,
+      costoStaffMensile, costiFissiMensili, fidoBase: FISCAL_2026.tesoreria.fidoDefault,
+      ruoliBrigata: (stato as any).staff.map((d: any) => d.ruoloEsteso ?? d.ruolo),
+    });
+
     return Response.json({
       partitaId: record.id,
       cassa: stato.tesoreria.saldo,
@@ -65,6 +94,8 @@ export default async function (req: Request): Promise<Response> {
       logCostituzione: (stato as any).__logCostituzione ?? [],
       cassaOperativa: stato.tesoreria.saldo,
       capitaleVersato: stato.capitaleVersato,
+      mesiAutonomia: riepilogo.mesiAutonomia,
+      budgetConsigliato: riepilogo.budgetConsigliato,
       gameOver: stato.gameOver,
     });
   } catch (error) {

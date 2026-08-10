@@ -16,7 +16,7 @@
  *
  * Il modulo genera annunci PLAUSIBILI ancorati a quei valori reali:
  * il prezzo è vero, l'annuncio è di fantasia. Vantaggi: nessun problema
- * legale, nessuna dipendenza di rete durante il gioco, e il seed rend
+ * legale, nessuna dipendenza di rete durante il gioco, e il seed rende
  * la bacheca riproducibile.
  *
  * ⚠️ LICENZA: i dati OMI vanno citati come "Agenzia Entrate - OMI".
@@ -65,7 +65,7 @@ export const OMI_ESEMPIO: QuotazioneOmi[] = [
   { comune: "Rimini", provincia: "RN", zona: "E1", descrizioneZona: "Forese / extraurbano", tipologia: "Negozi", posizioneCommerciale: "scadente", vendiraMin: 650, vendiraMax: 1000, affittoMin: 4, affittoMax: 7, semestre: "2026-1" },
 ];
 
-// ─────────────────────────────────────────────── Annuncio generato
+// ─────────────────────────────────────── Annuncio generato
 
 export type StatoImmobileAnnuncio = "da_ristrutturare" | "grezzo" | "buono" | "chiavi_in_mano";
 export type TipoOfferta = "affitto" | "vendita" | "entrambi";
@@ -100,7 +100,7 @@ export interface Annuncio {
   fonteQuotazione: string;
 }
 
-// ─────────────────────────────────────────────── Generatore
+// ─────────────────────────────────────── Generatore
 
 const STATI: Array<{ s: StatoImmobileAnnuncio; peso: number; scontoCanone: number; etichetta: string }> = [
   { s: "da_ristrutturare", peso: 25, scontoCanone: 0.62, etichetta: "da ristrutturare completamente" },
@@ -237,4 +237,115 @@ export function annuncioAConfigLocale(a: Annuncio, modalita: "affitto" | "acquis
 
 function eur(n: number): string {
   return n.toLocaleString("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+}
+
+
+// ─────────────────────────────────────── Reality Mood
+
+/**
+ * REALITY MOOD — lo switch che decide da dove vengono i locali.
+ *
+ * ACCESO  → solo immobili ancorati alle quotazioni OMI reali caricate
+ *           nel database (`generaBacheca`). Prezzi veri, ma l'offerta è
+ *           quella che è: potresti non trovare la combinazione ideale.
+ *
+ * SPENTO  → catalogo didattico: UN locale per ogni combinazione di
+ *           posizione × stato, così il giocatore può scegliere
+ *           esattamente il profilo che vuole e capire come cambiano
+ *           i costi. I prezzi restano plausibili, ma la vetrina è
+ *           costruita per insegnare, non per simulare il mercato.
+ */
+
+const POSIZIONI: Array<QuotazioneOmi["posizioneCommerciale"]> = ["ottima", "normale", "scadente"];
+const STATI_CATALOGO: StatoImmobileAnnuncio[] = ["da_ristrutturare", "grezzo", "buono", "chiavi_in_mano"];
+
+/** Taglie di locale offerte nel catalogo didattico. */
+const TAGLIE = [
+  { nome: "piccolo", mq: 80 },
+  { nome: "medio", mq: 130 },
+  { nome: "grande", mq: 200 },
+];
+
+export interface OpzioniCatalogo {
+  /** budget del giocatore: il catalogo segnala cosa è alla portata */
+  budget: number;
+  /** se true mostra anche quelli fuori budget, marcati */
+  mostraFuoriBudget?: boolean;
+  soloAffitto?: boolean;
+}
+
+export interface AnnuncioCatalogo extends Annuncio {
+  /** true se il costo d'ingresso stimato supera il budget */
+  fuoriBudget: boolean;
+  /** quanto serve, in tutto, per aprire qui (ingresso + allestimento stimato) */
+  costoIngressoStimato: number;
+  taglia: string;
+}
+
+/**
+ * Catalogo completo: una scheda per ogni combinazione sensata.
+ * Deterministico dal seed, così il giocatore che ricarica ritrova
+ * le stesse opzioni.
+ */
+export function generaCatalogoDidattico(
+  quotazioni: QuotazioneOmi[],
+  opt: OpzioniCatalogo,
+  rng: () => number
+): AnnuncioCatalogo[] {
+  const out: AnnuncioCatalogo[] = [];
+  let n = 0;
+  for (const pos of POSIZIONI) {
+    // prendo una quotazione reale di riferimento per quella posizione
+    const q = quotazioni.find((x) => x.posizioneCommerciale === pos) ?? quotazioni[0];
+    for (const taglia of TAGLIE) {
+      for (const stato of STATI_CATALOGO) {
+        n++;
+        const a = generaAnnuncio({ ...q, posizioneCommerciale: pos }, `cat-${pos}-${taglia.nome}-${stato}`, rng);
+        // forzo taglia e stato: il catalogo deve coprire TUTTE le combinazioni
+        const fattoreMq = taglia.mq / a.mq;
+        a.mq = taglia.mq;
+        a.stato = stato;
+        a.postiStimati = Math.floor((taglia.mq * 0.6) / 1.4);
+        a.impiantiPresenti = stato === "chiavi_in_mano" || a.exRistorante;
+        if (a.canoneMensile) a.canoneMensile = Math.round(a.canoneMensile * fattoreMq);
+        if (a.prezzoVendita) a.prezzoVendita = Math.round((a.prezzoVendita * fattoreMq) / 1000) * 1000;
+        if (a.avviamento) a.avviamento = Math.round(a.avviamento * fattoreMq);
+        a.titolo = `${a.exRistorante ? "Ristorante avviato" : "Locale"} ${taglia.mq} mq — ${etichettaPos(pos)}, ${etichettaStato(stato)}`;
+        a.descrizione =
+          `${taglia.mq} mq ${etichettaStato(stato)}, posizione commerciale ${pos}. ` +
+          `Circa ${a.postiStimati} coperti${a.postiEsterniPossibili ? ` più ${a.postiEsterniPossibili} esterni` : ""}. ` +
+          `${a.impiantiPresenti ? "Impianti presenti." : "Impianti da realizzare."}`;
+
+        if (opt.soloAffitto && !a.canoneMensile) continue;
+
+        // stima del costo d'ingresso: cauzione/prezzo + allestimento + attrezzature
+        const sconto = a.exRistorante ? 0.22 : 1;
+        const allestimento = ALLESTIMENTO_MQ_CATALOGO[stato] * taglia.mq * sconto;
+        const attrezzature = 1_400 * taglia.mq * 0.3 * sconto;
+        const arredo = 320 * a.postiStimati * sconto;
+        const impianti = a.impiantiPresenti ? 0 : 21_500;
+        const ingresso = a.canoneMensile
+          ? a.canoneMensile * 3 + (a.avviamento ?? 0)
+          : (a.prezzoVendita ?? 0);
+        const costoIngressoStimato = Math.round(ingresso + allestimento + attrezzature + arredo + impianti + 6_000);
+
+        const fuoriBudget = costoIngressoStimato > opt.budget;
+        if (fuoriBudget && !opt.mostraFuoriBudget) continue;
+        out.push({ ...a, fuoriBudget, costoIngressoStimato, taglia: taglia.nome });
+      }
+    }
+  }
+  return out.sort((a, b) => a.costoIngressoStimato - b.costoIngressoStimato);
+}
+
+const ALLESTIMENTO_MQ_CATALOGO: Record<StatoImmobileAnnuncio, number> = {
+  da_ristrutturare: 1_100, grezzo: 800, buono: 450, chiavi_in_mano: 180,
+};
+
+function etichettaPos(p: QuotazioneOmi["posizioneCommerciale"]): string {
+  return p === "ottima" ? "posizione di passaggio" : p === "normale" ? "semicentro" : "zona defilata";
+}
+function etichettaStato(s: StatoImmobileAnnuncio): string {
+  return s === "da_ristrutturare" ? "da ristrutturare" : s === "grezzo" ? "al grezzo"
+       : s === "buono" ? "in buono stato" : "chiavi in mano";
 }

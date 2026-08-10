@@ -12,7 +12,7 @@
  * { seed?, forma, budgetIniziale, meseInizio, mqMin?, mqMax?, soloAffitto? }
  */
 import { createClientFromRequest } from "npm:@base44/sdk";
-import { OMI_ESEMPIO, generaBacheca } from "../../shared/engine/immobili.ts";
+import { OMI_ESEMPIO, generaBacheca, generaCatalogoDidattico } from "../../shared/engine/immobili.ts";
 import { candidatiIniziali } from "../../shared/engine/partita.ts";
 import { opzioniCommercialista, costiCostituzione, regoleCapitale } from "../../shared/engine/costituzione.ts";
 import type { FormaGiuridica } from "../../shared/engine/engine.ts";
@@ -48,9 +48,18 @@ export default async function (req: Request): Promise<Response> {
 
     const pool = candidatiIniziali(seed, meseInizio);
 
+    // Catalogo didattico: una scheda per ogni combinazione posizione × taglia × stato.
+    // Deterministico rispetto al seed (rng indipendente dalla bacheca).
+    const catalogo = generaCatalogoDidattico(OMI_ESEMPIO, {
+      budget: budgetIniziale,
+      mostraFuoriBudget: true,
+      soloAffitto: false,
+    }, mulberry32(seed ^ 0xcaca));
+
     return Response.json({
       seed,
       bacheca,
+      catalogo,
       pool,
       commercialista: opzioniCommercialista(forma),
       costi: costiCostituzione(forma),
