@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { PixelPanel, Chip, SegmentedBar } from '@/components/game/ui';
+import { PixelPanel, SegmentedBar } from '@/components/game/ui';
 import { STILI } from '@/lib/gameData';
 import { money } from '@/lib/partita';
 import { annuncioAConfigLocale } from '../../../../base44/shared/engine/immobili';

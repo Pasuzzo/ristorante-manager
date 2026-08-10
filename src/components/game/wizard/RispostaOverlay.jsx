@@ -1,5 +1,5 @@
 import React from 'react';
-import { PixelPanel, Chip, SegmentedBar } from '@/components/game/ui';
+import { PixelPanel, Chip } from '@/components/game/ui';
 import { RUOLI_ESTESI, CONTRATTI, lordoMensile } from '@/lib/gameData';
 import { money } from '@/lib/partita';
 
