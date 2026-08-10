@@ -85,3 +85,28 @@ export function livelloLabel(v) { return LIVELLI.find((l) => l.value === v)?.lab
 export function qualitaLabel(v) { return QUALITA.find((q) => q.value === v)?.label ?? v; }
 export function servizioLabel(v) { return SERVIZI.find((s) => s.value === v)?.label ?? v; }
 export function repartoDi(ruolo) { return RUOLI.find((r) => r.value === ruolo)?.reparto ?? 'sala'; }
+
+// ── Etichette per il nuovo engine (titolare, mercato, macro)
+export const RUOLI_ESTESI = {
+  lavapiatti: 'Lavapiatti', runner: 'Runner', commis: 'Commis', cameriere: 'Cameriere',
+  chef_de_rang: 'Chef de rang', barista: 'Barista', pizzaiolo: 'Pizzaiolo', cuoco: 'Cuoco',
+  sous_chef: 'Sous chef', chef: 'Chef', pasticcere: 'Pasticcere', maitre: 'Maître',
+  sommelier: 'Sommelier', direttore: 'Direttore',
+};
+export const STILI = {
+  tradizionale_romagnolo: 'Tradizionale romagnolo', cucina_di_pesce: 'Cucina di pesce',
+  moderna_creativa: 'Moderna creativa', pizzeria: 'Pizzeria', trattoria_classica: 'Trattoria classica',
+  fine_dining: 'Fine dining', street_food: 'Street food', vegetariana: 'Vegetariana',
+};
+export const FORMAZIONI = {
+  autodidatta: 'Autodidatta', gavetta: 'Gavetta', corso_professionale: 'Corso professionale',
+  alberghiero: 'Alberghiero', alberghiero_e_stage_stellato: 'Alberghiero + stage stellato',
+};
+export const FAMIGLIE = {
+  single: 'Single', convivente: 'Convivente', famiglia_con_figli: 'Famiglia con figli',
+  genitore_solo: 'Genitore solo', figlio_di_ristoratori: 'Figlio di ristoratori',
+};
+export const CONTRATTI = {
+  full_regolare: 'Full-time regolare', part_time_regolare: 'Part-time regolare',
+  misto: 'Misto (busta + nero)', tutto_nero: 'Tutto in nero', stagionale: 'Stagionale',
+};

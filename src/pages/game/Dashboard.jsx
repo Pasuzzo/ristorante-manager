@@ -1,12 +1,99 @@
 import React from 'react';
-import { PixelPanel, Stat, StarRating, SegmentedBar } from '@/components/game/ui';
+import { PixelPanel, Stat, StarRating, SegmentedBar, Chip } from '@/components/game/ui';
+import { Icon } from '@/components/game/icons';
 import CashChart from '@/components/game/CashChart';
 import EventFeed from '@/components/game/EventFeed';
 import { buildCashHistory } from '@/lib/cashChart';
 import { money, nomeMese } from '@/lib/partita';
 import { formaLabel, localitaLabel } from '@/lib/gameData';
 
-/** Vista principale: colpo d'occhio su cassa, reputazione, ultimi eventi. */
+function MacroPanel({ stato, report }) {
+  const m = stato?.macroStato ?? {};
+  const rm = report?.macro ?? {};
+  const infl = (m.inflazioneAnnua ?? rm.inflazione ?? 0) * 100;
+  const inflAlim = (m.inflazioneAlimentare ?? rm.inflazioneAlimentare ?? 0) * 100;
+  const fiducia = m.fiduciaConsumatori ?? rm.fiducia ?? 1;
+  const salari = m.crescitaSalariAnnua ?? rm.salari ?? 0;
+  const canoni = m.indiceCanoni ?? 1;
+  const shock = m.shockAttivo?.nome ?? rm.shock;
+  const gap = infl / 100 - salari;
+
+  return (
+    <PixelPanel title="Economia" icon="chart">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="rm-card-dark rm-no-radius p-2">
+          <div className="rm-pixel text-[7px] text-rm-cream/60 uppercase">Inflazione</div>
+          <div className="rm-pixel text-[12px] text-rm-cream">{infl.toFixed(1)}%</div>
+        </div>
+        <div className="rm-card-dark rm-no-radius p-2">
+          <div className="rm-pixel text-[7px] text-rm-cream/60 uppercase">Alimentare</div>
+          <div className={`rm-pixel text-[12px] ${inflAlim > infl + 1 ? 'text-rm-red' : 'text-rm-cream'}`}>{inflAlim.toFixed(1)}%</div>
+        </div>
+        <div className="rm-card-dark rm-no-radius p-2">
+          <div className="rm-pixel text-[7px] text-rm-cream/60 uppercase">Fiducia</div>
+          <div className={`rm-pixel text-[12px] ${fiducia < 0.85 ? 'text-rm-red' : 'text-rm-cream'}`}>{Math.round(fiducia * 100)}</div>
+        </div>
+        <div className="rm-card-dark rm-no-radius p-2">
+          <div className="rm-pixel text-[7px] text-rm-cream/60 uppercase">Canoni</div>
+          <div className="rm-pixel text-[12px] text-rm-cream">×{canoni.toFixed(2)}</div>
+        </div>
+      </div>
+      <div className="rm-text text-[14px] text-rm-cream/60 mt-2">
+        Salari +{(salari * 100).toFixed(1)}%/anno · potere d'acquisto: {gap > 0.02 ? <span className="text-rm-red">in calo</span> : <span className="text-rm-green">stabile</span>}
+      </div>
+      {shock && (
+        <div className="rm-card-dark rm-no-radius p-2 mt-2 border-2 border-rm-red">
+          <div className="rm-pixel text-[8px] text-rm-red uppercase">Shock in corso</div>
+          <div className="rm-text text-[15px] text-rm-cream mt-1">{shock}</div>
+        </div>
+      )}
+    </PixelPanel>
+  );
+}
+
+function TitolareMini({ stato }) {
+  const t = stato?.titolare ?? {};
+  const stress = t.stress ?? 20;
+  const color = stress >= 70 ? '#c8443c' : stress >= 50 ? '#e8b84b' : '#5a8c46';
+  return (
+    <PixelPanel title="Titolare" icon="chef">
+      <div className="flex items-center justify-between">
+        <span className="rm-text text-[16px] text-rm-cream">{t.nome ?? '—'}</span>
+        {t.burnout ? <Chip color="bg-rm-red">BURNOUT</Chip> : <span className="rm-pixel text-[10px]" style={{ color }}>{Math.round(stress)}/100</span>}
+      </div>
+      <div className="mt-2"><SegmentedBar value={stress} max={100} segments={20} color={color} size={10} /></div>
+      {t.burnout && <div className="rm-text text-[14px] text-rm-red mt-2">Decisioni di visione bloccate. Delega e riposa.</div>}
+      {stato?.compiti?.ruoloCoperto && <div className="rm-text text-[14px] text-rm-cream/60 mt-2">Copre un ruolo operativo: {stato.compiti.ruoloCoperto}.</div>}
+    </PixelPanel>
+  );
+}
+
+function Alerts({ stato }) {
+  const alerts = [];
+  const saldo = stato?.tesoreria?.saldo ?? 0;
+  if (saldo < 0) alerts.push({ icon: 'skull', txt: 'Cassa in rosso: rischi insolvenza.', color: 'text-rm-red' });
+  const t = stato?.titolare ?? {};
+  if (t.burnout) alerts.push({ icon: 'skull', txt: 'Burnout: decisioni di visione bloccate.', color: 'text-rm-red' });
+  else if (t.stress >= 70) alerts.push({ icon: 'chef', txt: 'Stress alto: delega prima di crollare.', color: 'text-rm-gold' });
+  const fc = stato?.ristorante?.foodCostPct ?? 0;
+  if (fc > 0.45) alerts.push({ icon: 'leaf', txt: `Food cost alto (${Math.round(fc * 100)}%): rivedi menu o listino.`, color: 'text-rm-red' });
+  const irreg = (stato?.staff ?? []).filter((d) => !d.inRegola).length;
+  if (irreg > 0) alerts.push({ icon: 'skull', txt: `${irreg} dipendenti in nero: rischio ispezione.`, color: 'text-rm-gold' });
+  if (alerts.length === 0) return null;
+  return (
+    <PixelPanel title="Alert" icon="spark">
+      <div className="space-y-1">
+        {alerts.map((a, i) => (
+          <div key={i} className={`rm-text text-[15px] ${a.color} flex items-center gap-2`}>
+            <Icon name={a.icon} size={14} color="#c8443c" /> {a.txt}
+          </div>
+        ))}
+      </div>
+    </PixelPanel>
+  );
+}
+
+/** Vista principale: colpo d'occhio su cassa, macro, titolare, alert, eventi. */
 export default function Dashboard({ stato, partita }) {
   const report = partita?.ultimo_report;
   const tes = stato?.tesoreria ?? {};
@@ -23,9 +110,16 @@ export default function Dashboard({ stato, partita }) {
         <Stat label="Gradimento" value={report ? `${(report.gradimento * 5).toFixed(1)}★` : '—'} icon="heart" />
       </div>
 
-      <PixelPanel title="Andamento cassa" icon="chart">
-        <CashChart history={history} />
-      </PixelPanel>
+      <MacroPanel stato={stato} report={report} />
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <TitolareMini stato={stato} />
+        <PixelPanel title="Andamento cassa" icon="chart">
+          <CashChart history={history} />
+        </PixelPanel>
+      </div>
+
+      <Alerts stato={stato} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <PixelPanel title="Situazione" icon="chef">
