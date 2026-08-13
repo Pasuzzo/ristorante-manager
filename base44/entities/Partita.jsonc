@@ -20,7 +20,10 @@
       "type": "object"
     },
     "ultimo_bandi": {
-      "type": "array"
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
     }
   },
   "required": [
