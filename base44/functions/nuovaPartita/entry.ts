@@ -103,8 +103,8 @@ export default async function (req: Request): Promise<Response> {
       mese: (stato as any).mese,
       annoGioco: (stato as any).annoGioco,
       logCostituzione: (stato as any).__logCostituzione ?? [],
-      riepilogo,
       macroPartenza: (stato as any).macroStato?.partenza ?? null,
+      ...riepilogo,
     });
   } catch (error) {
     return Response.json({ error: (error as Error).message }, { status: 500 });
