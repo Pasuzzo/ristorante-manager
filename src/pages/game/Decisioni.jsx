@@ -15,9 +15,58 @@ function Slider({ label, value, set, min, max, step, display }) {
   );
 }
 
+/** Pannello Registro: quanto nascondi, e cosa rischi. */
+function RegistroNero({ decisioni, setNero, nero }) {
+  const qS = (decisioni.nero?.quotaScontrino ?? 0) * 100;
+  const qA = (decisioni.nero?.quotaAcquisti ?? 0) * 100;
+  const paga = decisioni.nero?.pagaNeroInAssenza ?? true;
+  const rischio = nero?.rischio ?? 0;
+  return (
+    <PixelPanel title="Registro (nero)" icon="coin">
+      <div className="space-y-3">
+        <Slider label="Incassi non battuti" value={qS} set={(v) => setNero('quotaScontrino', v / 100)} min={0} max={60} step={5} display={`${Math.round(qS)}%`} />
+        <Slider label="Acquisti senza fattura" value={qA} set={(v) => setNero('quotaAcquisti', v / 100)} min={0} max={60} step={5} display={`${Math.round(qA)}%`} />
+        <button onClick={() => setNero('pagaNeroInAssenza', !paga)} className="rm-no-radius w-full p-2 border-[3px] flex items-center justify-between"
+          style={{ backgroundColor: paga ? '#5a8c46' : '#2b2233', color: '#f2e5bc', borderColor: '#5a3825' }}>
+          <span className="rm-pixel text-[9px]">Fuori busta in assenza</span>
+          <span className="rm-pixel text-[9px]">{paga ? 'PAGA' : 'SOSPEDE'}</span>
+        </button>
+        {nero && (
+          <div className="rm-card-dark rm-no-radius p-2 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="rm-pixel text-[8px] text-rm-cream uppercase">Cassa nera</span>
+              <span className="rm-pixel text-[10px] text-rm-gold">{money(nero.cassaNera)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="rm-pixel text-[8px] text-rm-cream uppercase">Quota nera (anno)</span>
+              <span className="rm-pixel text-[10px] text-rm-cream">{Math.round((nero.quotaNeraAnno ?? 0) * 100)}%</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="rm-pixel text-[8px] text-rm-cream uppercase">Incoerenza</span>
+              <span className="rm-pixel text-[10px] text-rm-cream">{Math.round((nero.incoerenza ?? 0) * 100)}%</span>
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <span className="rm-pixel text-[8px] text-rm-cream uppercase">Rischio fiscale</span>
+                <span className="rm-pixel text-[10px] text-rm-red">{Math.round(rischio * 100)}%</span>
+              </div>
+              <SegmentedBar value={rischio * 100} max={100} segments={10} color="#c8443c" size={9} />
+            </div>
+          </div>
+        )}
+        <div className="rm-text text-[14px] text-rm-cream/60">
+          Il contante in nero è un portafoglio separato: il fuori busta si paga da lì. Nascondere incassi senza nascondere acquisti rende i conti incoerenti.
+        </div>
+      </div>
+    </PixelPanel>
+  );
+}
+
+
 /** Decisioni mensili: marketing, materie prime, servizi, listino, manutenzione, ristrutturazione. */
-export default function Decisioni({ stato, decisioni, setDecisioni }) {
+export default function Decisioni({ stato, decisioni, setDecisioni, report }) {
   const set = (k, v) => setDecisioni((p) => ({ ...p, [k]: v }));
+  const setNero = (k, v) => setDecisioni((p) => ({ ...p, nero: { ...(p.nero ?? {}), [k]: v } }));
 
   const toggleServizio = (v) => {
     setDecisioni((p) => {
@@ -85,6 +134,8 @@ export default function Decisioni({ stato, decisioni, setDecisioni }) {
           </div>
         </div>
       </PixelPanel>
+
+      <RegistroNero decisioni={decisioni} setNero={setNero} nero={report?.nero} />
     </div>
   );
 }

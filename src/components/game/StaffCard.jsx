@@ -16,7 +16,7 @@ function Attr({ label, value }) {
 
 /** Scheda di un dipendente con attributi, morale, TFR e azioni contrattuali. */
 export default function StaffCard({
-  dipendente, tfr = 0, busta,
+  dipendente, tfr = 0, busta, assenzeGiorni = 0, ferieMaturate = 0,
   onLicenzia, onAumenta,
   pendingLicenzia = false, pendingAumento = null,
 }) {
@@ -59,8 +59,15 @@ export default function StaffCard({
           Stipendio <span className="rm-pixel text-[10px]">{money(lordo)}/mese</span>
           {d.superminimo > 1 && <span className="text-rm-green"> (+{Math.round((d.superminimo - 1) * 100)}%)</span>}
         </div>
-        <div className="rm-text text-[14px] text-rm-wood-dark">TFR {money(tfr)}</div>
+        <div className="rm-text text-[14px] text-rm-wood-dark">
+          TFR {money(tfr)}
+          {ferieMaturate > 0 && <span className="text-rm-blue"> · Ferie {Math.round(ferieMaturate)}g</span>}
+        </div>
       </div>
+
+      {assenzeGiorni > 0 && (
+        <div className="mt-1"><span className="rm-chip bg-rm-red">ASSENTE {assenzeGiorni}g</span></div>
+      )}
 
       {busta && (
         <div className="mt-1 grid grid-cols-3 gap-1">
