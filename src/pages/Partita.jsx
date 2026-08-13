@@ -162,7 +162,7 @@ export default function Partita() {
       <main className="px-2">
         {tab === 'dashboard' && <Dashboard stato={stato} partita={partita} />}
         {tab === 'titolare' && <Titolare stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
-        {tab === 'staff' && <Staff stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
+        {tab === 'staff' && <Staff stato={stato} report={report} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'turni' && <Turni stato={stato} report={report} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'mercato' && <Mercato stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'bandi' && <Bandi stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} bandi={bandi} />}

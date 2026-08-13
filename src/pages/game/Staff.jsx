@@ -6,10 +6,11 @@ import { lordoMensile } from '@/lib/gameData';
 import { money } from '@/lib/partita';
 
 /** Gestione della brigata: assunzioni, licenziamenti, aumenti (in coda al prossimo turno). */
-export default function Staff({ stato, decisioni, setDecisioni }) {
+export default function Staff({ stato, report, decisioni, setDecisioni }) {
   const [draft, setDraft] = useState(false);
   const staff = stato?.staff ?? [];
   const tfrMap = stato?.tfrPerDipendente ?? {};
+  const buste = report?.buste ?? {};
 
   const toggleLicenzia = (id) => {
     setDecisioni((p) => {
@@ -70,6 +71,7 @@ export default function Staff({ stato, decisioni, setDecisioni }) {
           <StaffCard
             key={d.id}
             dipendente={d}
+            busta={buste[d.id]}
             tfr={tfrMap[d.id] ?? 0}
             onLicenzia={() => toggleLicenzia(d.id)}
             onAumenta={() => aumenta(d.id, d.superminimo)}

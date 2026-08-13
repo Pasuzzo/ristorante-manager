@@ -16,7 +16,7 @@ function Attr({ label, value }) {
 
 /** Scheda di un dipendente con attributi, morale, TFR e azioni contrattuali. */
 export default function StaffCard({
-  dipendente, tfr = 0,
+  dipendente, tfr = 0, busta,
   onLicenzia, onAumenta,
   pendingLicenzia = false, pendingAumento = null,
 }) {
@@ -61,6 +61,26 @@ export default function StaffCard({
         </div>
         <div className="rm-text text-[14px] text-rm-wood-dark">TFR {money(tfr)}</div>
       </div>
+
+      {busta && (
+        <div className="mt-1 grid grid-cols-3 gap-1">
+          <div>
+            <div className="rm-pixel text-[6px] uppercase text-rm-wood-dark">Azienda</div>
+            <div className="rm-pixel text-[9px] text-rm-bg">{money(busta.costoAzienda)}</div>
+          </div>
+          <div>
+            <div className="rm-pixel text-[6px] uppercase text-rm-wood-dark">Lordo</div>
+            <div className="rm-pixel text-[9px] text-rm-bg">{money(busta.lordo)}</div>
+          </div>
+          <div>
+            <div className="rm-pixel text-[6px] uppercase text-rm-wood-dark">Netto</div>
+            <div className="rm-pixel text-[9px] text-rm-bg">
+              {money(busta.nettoInBusta)}
+              {busta.cashNero > 0 && <span className="text-rm-red"> +{money(busta.cashNero)}</span>}
+            </div>
+          </div>
+        </div>
+      )}
 
       {pendingLicenzia && (
         <div className="mt-2 rm-chip bg-rm-red w-full text-center">IN PARTENZA — fine mese</div>
