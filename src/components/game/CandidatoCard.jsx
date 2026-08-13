@@ -6,6 +6,30 @@ import { money } from '@/lib/partita';
 const ATTR_LABELS = { tecnica: 'Tecnica', velocita: 'Velocità', cortesia: 'Cortesia', resistenza: 'Resistenza', esperienza: 'Esp.' };
 const TRATTO_BG = { pregio: '#5a8c46', difetto: '#c8443c', neutro: '#3c5a8c' };
 
+/** Barra AFFIDABILITÀ: forbice larga tratteggiata. È il dato più importante
+ *  e il più incerto: al colloquio si intuisce poco. */
+function AffidabilitaBar({ range }) {
+  if (!range) return null;
+  const [lo, hi] = range;
+  const left = Math.max(0, lo);
+  const width = Math.max(2, Math.min(100, hi) - left);
+  return (
+    <div className="mt-2">
+      <div className="flex items-center justify-between">
+        <span className="rm-pixel text-[7px] text-rm-wood-dark uppercase">Affidabilità</span>
+        <span className="rm-pixel text-[9px] text-rm-bg">{lo}-{hi}</span>
+      </div>
+      <div className="relative h-3 mt-1 bg-rm-bg2 border-2 border-rm-wood-dark">
+        <div
+          className="absolute top-0 bottom-0"
+          style={{ left: `${left}%`, width: `${width}%`, backgroundImage: 'repeating-linear-gradient(90deg,#e8b84b 0 4px,transparent 4px 8px)' }}
+        />
+      </div>
+      <div className="rm-text text-[12px] text-rm-wood-dark/70 leading-none mt-[2px]">dato chiave · molto incerto</div>
+    </div>
+  );
+}
+
 /** Scheda candidato riutilizzabile (wizard e mercato). Mostra forbice attributi,
  *  tratti visibili/nascosti e pretese contrattuali. */
 export default function CandidatoCard({ candidato: c, offerto = false, onOffri, onRimuovi }) {
@@ -27,6 +51,8 @@ export default function CandidatoCard({ candidato: c, offerto = false, onOffri, 
           </div>
         ))}
       </div>
+
+      <AffidabilitaBar range={v.affidabilita} />
       <div className="rm-text text-[14px] text-rm-wood-dark mt-2 leading-tight">
         <div>🎓 {FORMAZIONI[c.formazione] ?? c.formazione}</div>
         <div>🍽️ {STILI[c.stile] ?? c.stile}</div>

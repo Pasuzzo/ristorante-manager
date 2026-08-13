@@ -34,6 +34,7 @@ function defaultDecisioni(stato) {
     compiti: stato?.compiti ?? {},
     nero: stato?.politicheNero ?? { quotaScontrino: 0, quotaAcquisti: 0, pagaNeroInAssenza: true },
     corsi: [],
+    annunci: [],
     reparti: stato?.reparti ? {
       budgetCucina: stato.reparti.budgetCucina, budgetSala: stato.reparti.budgetSala,
       responsabileCucina: stato.reparti.responsabileCucina ?? null,
@@ -176,7 +177,7 @@ export default function Partita() {
         {tab === 'titolare' && <Titolare stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'staff' && <Staff stato={stato} report={report} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'turni' && <Turni stato={stato} report={report} decisioni={decisioni} setDecisioni={setDecisioni} />}
-        {tab === 'mercato' && <Mercato stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
+        {tab === 'mercato' && <Mercato stato={stato} report={report} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'reparti' && <Reparti stato={stato} report={report} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'bandi' && <Bandi stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} bandi={bandi} />}
         {tab === 'decisioni' && <Decisioni stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} report={report} />}
