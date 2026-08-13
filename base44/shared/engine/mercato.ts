@@ -164,12 +164,18 @@ export interface Candidato {
   pretese: Pretese;
   /** quanto costa al mese come lordo base, prima del superminimo */
   lordoBaseMensile: number;
+  /** affidabilità vera 0-100: al colloquio non si vede quasi per niente */
+  affidabilita: number;
   /** attributi mostrati al giocatore come forbice (incertezza) */
   vetrina: {
     attributi: Record<keyof Attributi, [number, number]>;
+    /** l'unica cosa che conta davvero è anche la più opaca */
+    affidabilita: [number, number];
     trattiVisibili: Tratto[];
     trattiNascosti: number; // quanti ce ne sono che non vede
   };
+  /** da dove arriva: candidatura spontanea o risposta a un annuncio */
+  provenienza?: "spontanea" | "annuncio";
 }
 
 // ─────────────────────────────────────────────── Generatore
@@ -240,11 +246,26 @@ export function generaCandidato(id: string, opt: OpzioniMercato, rng: () => numb
   const forbice = (v: number): [number, number] => [Math.max(1, v - incertezza), Math.min(20, v + incertezza)];
   const visibili = tratti.filter((t) => t.palese);
 
+  // Affidabilità: asse indipendente dalla competenza. È il motivo per cui
+  // vale la pena investire sul ragazzo poco formato che non manca un turno.
+  const trattiSu = new Set(["leale", "ordinato", "instancabile", "mentore", "risparmioso"]);
+  const trattiGiu = new Set(["ritardatario", "beve", "cellulare_in_mano", "testa_calda", "sbadato", "fumatore"]);
+  let affid = 50 + (attributi.esperienza - 10) * 1.2 + (rng() - 0.5) * 28;
+  for (const t of tratti) {
+    if (trattiSu.has(t.id)) affid += 9;
+    if (trattiGiu.has(t.id)) affid -= 9;
+  }
+  affid = Math.max(5, Math.min(95, Math.round(affid)));
+  // al colloquio si intuisce poco: forbice larghissima, stretta solo dalle referenze
+  const incAffid = eta < 25 ? 30 : eta < 40 ? 24 : 18;
+
   return {
     id, nome: `${pick(NOMI, rng)} ${pick(COGNOMI, rng)}`, eta, ruolo, attributi, stile,
     formazione, tratti, famiglia, pretese,
+    affidabilita: affid,
     lordoBaseMensile: Math.round(1_500 * LIVELLO_CCNL[ruolo]),
     vetrina: {
+      affidabilita: [Math.max(0, affid - incAffid), Math.min(100, affid + incAffid)],
       attributi: {
         tecnica: forbice(attributi.tecnica), velocita: forbice(attributi.velocita),
         cortesia: forbice(attributi.cortesia), resistenza: forbice(attributi.resistenza),
@@ -457,4 +478,96 @@ export function eventiDipendenti(
     }
   }
   return out;
+}
+
+
+// ─────────────────────────────────────────────── CV e annunci
+
+/**
+ * ASSUNZIONI — non c'è più una vetrina di candidati sempre disponibile.
+ * Ci sono due flussi, come nella realtà:
+ *
+ * SPONTANEO: ogni mese arrivano poche candidature, a caso, e la qualità
+ *   dipende da quanto sei conosciuto. Se nessuno ti conosce, ti arriva
+ *   quello che avanza.
+ *
+ * ANNUNCIO: pubblichi per uno o più ruoli, paghi, e ricevi più candidati
+ *   mirati. In alta stagione costa di più e rende di meno: i bravi
+ *   lavorano già.
+ */
+
+export const COSTO_ANNUNCIO = 180;
+
+export interface Annuncio {
+  ruolo: RuoloEsteso;
+  /** quanto spendi: più spendi, più candidature e migliori */
+  budget?: number;
+}
+
+export interface EsitoAssunzioni {
+  cv: Candidato[];
+  costo: number;
+  eventi: string[];
+}
+
+/** Quante candidature spontanee arrivano, in base a quanto sei noto. */
+function quantiSpontanei(reputazione: number, mese: number, rng: () => number): number {
+  const altaStagione = mese >= 6 && mese <= 8;
+  const base = 0.5 + reputazione * 2.2;
+  const n = base * (altaStagione ? 0.5 : 1.15);
+  return Math.max(0, Math.round(n - 0.5 + rng()));
+}
+
+export function raccogliCandidature(
+  reputazione: number,
+  mese: number,
+  annunci: Annuncio[],
+  rng: () => number
+): EsitoAssunzioni {
+  const eventi: string[] = [];
+  const cv: Candidato[] = [];
+  let costo = 0;
+  const altaStagione = mese >= 6 && mese <= 8;
+
+  // ── Candidature spontanee
+  const n = quantiSpontanei(reputazione, mese, rng);
+  for (let i = 0; i < n; i++) {
+    const c = generaCandidato(`cv-${mese}-${i}-${Math.floor(rng() * 1e6)}`, {
+      qualitaBacino: 0.85 + reputazione * 0.4,
+      pressioneStagionale: altaStagione ? 1.3 : 0.95,
+    }, rng);
+    c.provenienza = "spontanea";
+    cv.push(c);
+  }
+  if (n > 0) eventi.push(`📨 ${n} candidatur${n === 1 ? "a spontanea" : "e spontanee"} in casella.`);
+  else if (annunci.length === 0) eventi.push("📭 Nessuna candidatura questo mese. Se ti serve gente, pubblica un annuncio.");
+
+  // ── Annunci pubblicati
+  for (const a of annunci) {
+    const budget = Math.max(COSTO_ANNUNCIO, a.budget ?? COSTO_ANNUNCIO);
+    costo += budget * (altaStagione ? 1.4 : 1);
+    // più budget = più risposte, con rendimenti decrescenti
+    const risposte = Math.max(1, Math.round((1.2 + Math.log1p(budget / COSTO_ANNUNCIO) * 1.6) * (altaStagione ? 0.6 : 1)));
+    for (let i = 0; i < risposte; i++) {
+      const c = generaCandidato(`ann-${a.ruolo}-${i}-${Math.floor(rng() * 1e6)}`, {
+        ruoliCercati: [a.ruolo],
+        qualitaBacino: (0.9 + reputazione * 0.5) * (altaStagione ? 0.7 : 1.1),
+        pressioneStagionale: altaStagione ? 1.35 : 1,
+      }, rng);
+      c.provenienza = "annuncio";
+      cv.push(c);
+    }
+    eventi.push(
+      `📢 Annuncio per ${a.ruolo}: ${risposte} rispost${risposte === 1 ? "a" : "e"}, ${Math.round(budget * (altaStagione ? 1.4 : 1))}€.` +
+      (altaStagione ? " In stagione costa di più e risponde di meno: i bravi lavorano già." : "")
+    );
+  }
+
+  return { cv, costo: Math.round(costo), eventi };
+}
+
+/** I CV non restano in casella per sempre: chi non richiami trova altro. */
+export function scadenzaCandidature(cv: Candidato[], rng: () => number): { restano: Candidato[]; persi: number } {
+  const restano = cv.filter(() => rng() > 0.45);
+  return { restano, persi: cv.length - restano.length };
 }

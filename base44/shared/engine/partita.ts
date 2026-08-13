@@ -66,8 +66,9 @@ import { Annuncio, annuncioAConfigLocale } from "./immobili.ts";
 import { ConfigLocale, calcolaPianoCosti } from "./costi-avvio.ts";
 import { Candidato, Offerta, valutaOfferta, assumi as assumiCandidato } from "./mercato.ts";
 import {
-  EsitoOfferta, Stile, RuoloEsteso,
+  EsitoOfferta, Stile, RuoloEsteso, Annuncio as AnnuncioLavoro,
   generaMercato, aggiornaAdattamento, eventiDipendenti, EventoDipendente,
+  raccogliCandidature, scadenzaCandidature, COSTO_ANNUNCIO,
 } from "./mercato.ts";
 
 // ─────────────────────────────────────────────── Stato di partita
@@ -83,7 +84,8 @@ export interface StatoPartita {
   staff: DipendenteEsteso[];
   /** stile del locale: i dipendenti con stile diverso rendono meno finché non si adattano */
   stileLocale: Stile;
-  /** candidati disponibili questo mese (rigenerati a ogni turno) */
+  /** candidature ricevute: spontanee e in risposta agli annunci.
+   *  Sostituisce la vecchia vetrina sempre piena. */
   mercato: Candidato[];
   /** TFR maturato per dipendente (per liquidarlo a fine rapporto) */
   tfrPerDipendente: Record<string, number>;
@@ -143,8 +145,10 @@ export interface DecisioniMese {
   manutenzioneMese?: number;
   servizi?: Servizio[];
   listino?: number; // 1 = in linea col mercato
-  /** assunzioni dal mercato: offerte fatte ai candidati visibili */
+  /** assunzioni: offerte fatte ai candidati in casella */
   offerte?: Offerta[];
+  /** annunci di lavoro da pubblicare questo mese */
+  annunci?: AnnuncioLavoro[];
   /** assunzioni dirette (debug/scenari): saltano il mercato */
   assunzioni?: NuovaAssunzione[];
   licenziamenti?: string[]; // id dipendenti
@@ -962,12 +966,16 @@ export function avanzaMese(
     eventi.push("💀 GAME OVER — la banca chiude i rubinetti.");
   }
 
-  // ── Nuovo bacino di candidati per il mese prossimo
-  const altaStagione = s.mese >= 5 && s.mese <= 8;
-  s.mercato = generaMercato(s.mese, {
-    qualitaBacino: altaStagione ? 0.7 : 1.1,
-    pressioneStagionale: altaStagione ? 1.3 : 1,
-  }, rng, altaStagione ? 3 : 6);
+  // ── Casella CV: i candidati non richiamati trovano altro, poi arrivano
+  //    le candidature nuove (spontanee + risposte agli annunci pubblicati)
+  const scaduti = scadenzaCandidature(s.mercato ?? [], rng);
+  if (scaduti.persi > 0) {
+    eventi.push(`📪 ${scaduti.persi} candidat${scaduti.persi === 1 ? "o ha" : "i hanno"} trovato altrove: le candidature non aspettano.`);
+  }
+  const raccolta = raccogliCandidature(s.reputazione, s.mese, dec.annunci ?? [], rng);
+  eventi.push(...raccolta.eventi);
+  s.mercato = [...scaduti.restano, ...raccolta.cv];
+  if (raccolta.costo > 0) s.tesoreria.saldo -= raccolta.costo;
 
   const quotaServita = r.copertiTotali > 0 ? serviti / r.copertiTotali : 0;
   const giorniReport = r.giorni.map((g) => {
