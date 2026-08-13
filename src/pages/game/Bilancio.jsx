@@ -68,6 +68,72 @@ export default function Bilancio({ stato, partita }) {
           )}
         </PixelPanel>
       )}
+
+      {report && <Commercialista report={report} />}
     </div>
+  );
+}
+
+const GRAV_ORD = { allarme: 0, attenzione: 1, info: 2 };
+const GRAV_BG = { allarme: 'bg-rm-red', attenzione: 'bg-rm-gold', info: 'bg-rm-bg2' };
+const GRAV_TX = { allarme: 'text-rm-cream', attenzione: 'text-rm-bg', info: 'text-rm-cream/70' };
+
+function Commercialista({ report }) {
+  const consigli = [...(report.consigli ?? [])].sort((a, b) => (GRAV_ORD[a.gravita] ?? 9) - (GRAV_ORD[b.gravita] ?? 9));
+  const uscite = report.usciteProiettate ?? [];
+  const scadenze = report.scadenze ?? [];
+  const maxUsc = Math.max(1, ...uscite.map((u) => u.totale ?? 0));
+
+  return (
+    <PixelPanel title="Il commercialista" icon="spark">
+      {consigli.length === 0 && (
+        <div className="rm-text text-[16px] text-rm-cream/50">Nessun promemoria questo mese.</div>
+      )}
+      <div className="space-y-1">
+        {consigli.map((c, i) => (
+          <div key={i} className={`rm-no-radius p-2 ${GRAV_BG[c.gravita] ?? 'bg-rm-bg2'}`}>
+            <div className={`rm-pixel text-[7px] uppercase mb-1 ${GRAV_TX[c.gravita] ?? ''}`}>{c.gravita}</div>
+            <div className={`rm-text text-[16px] leading-snug ${GRAV_TX[c.gravita] ?? ''}`}>{c.testo}</div>
+          </div>
+        ))}
+      </div>
+
+      {uscite.length > 0 && (
+        <div className="mt-3">
+          <div className="rm-pixel text-[8px] text-rm-cream/70 uppercase mb-1">Uscite proiettate (4 mesi)</div>
+          <div className="space-y-1">
+            {uscite.map((u, i) => {
+              const w = Math.max(2, Math.round(((u.totale ?? 0) / maxUsc) * 100));
+              return (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="rm-pixel text-[8px] text-rm-cream/70 w-16">{nomeMese(u.mese)}</span>
+                  <div className="flex-1 bg-rm-bg2 border-2 border-rm-wood-dark h-3 relative">
+                    <div className="absolute top-0 bottom-0 left-0 bg-rm-red" style={{ width: `${w}%` }} />
+                  </div>
+                  <span className="rm-pixel text-[9px] text-rm-cream w-20 text-right">{money(u.totale ?? 0)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {scadenze.length > 0 && (
+        <div className="mt-3">
+          <div className="rm-pixel text-[8px] text-rm-cream/70 uppercase mb-1">Scadenze</div>
+          <div className="space-y-[2px]">
+            {scadenze.map((s, i) => (
+              <div key={i} className="rm-card-dark rm-no-radius px-2 py-1 flex items-center gap-2">
+                <span className="rm-pixel text-[8px] text-rm-gold w-12">{nomeMese(s.mese)}</span>
+                <span className="rm-text text-[15px] text-rm-cream flex-1 truncate">
+                  {s.critica ? '⚠️ ' : ''}{s.voce}{s.certezza === 'stimata' ? ' ~' : ''}
+                </span>
+                <span className="rm-pixel text-[9px] text-rm-cream">{money(s.importo ?? 0)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </PixelPanel>
   );
 }
