@@ -79,6 +79,7 @@ export default function Partita() {
       const p = await getPartita(id);
       setPartita(p);
       setDecisioni(defaultDecisioni(p.stato));
+      if (p.ultimo_bandi) setBandi(p.ultimo_bandi);
       if (p.game_over && p.ultimo_report) {
         setReport(p.ultimo_report);
         setShowReport(true);

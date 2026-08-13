@@ -18,6 +18,9 @@
     },
     "ultimo_report": {
       "type": "object"
+    },
+    "ultimo_bandi": {
+      "type": "object"
     }
   },
   "required": [

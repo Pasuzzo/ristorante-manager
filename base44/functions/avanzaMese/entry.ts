@@ -81,6 +81,7 @@ export default async function (req: Request): Promise<Response> {
       turni_giocati: (record.turni_giocati ?? 0) + 1,
       game_over: report.gameOver,
       ultimo_report: report,
+      ultimo_bandi: bandi,
     });
 
     return Response.json({ report, bandi });
