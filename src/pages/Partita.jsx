@@ -12,6 +12,7 @@ import Bandi from '@/pages/game/Bandi';
 import Decisioni from '@/pages/game/Decisioni';
 import Bilancio from '@/pages/game/Bilancio';
 import MenuPage from '@/pages/game/Menu';
+import Turni from '@/pages/game/Turni';
 import { getPartita, avanzaTurno, money, nomeMese } from '@/lib/partita';
 import { formaLabel } from '@/lib/gameData';
 
@@ -38,6 +39,7 @@ const TABS = [
   { key: 'dashboard', label: 'Dashboard', icon: 'chart' },
   { key: 'titolare', label: 'Titolare', icon: 'chef' },
   { key: 'staff', label: 'Staff', icon: 'users' },
+  { key: 'turni', label: 'Turni', icon: 'cal' },
   { key: 'mercato', label: 'Mercato', icon: 'cart' },
   { key: 'bandi', label: 'Bandi', icon: 'envelope' },
   { key: 'decisioni', label: 'Decisioni', icon: 'mega' },
@@ -161,6 +163,7 @@ export default function Partita() {
         {tab === 'dashboard' && <Dashboard stato={stato} partita={partita} />}
         {tab === 'titolare' && <Titolare stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'staff' && <Staff stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
+        {tab === 'turni' && <Turni stato={stato} report={report} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'mercato' && <Mercato stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'bandi' && <Bandi stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} bandi={bandi} />}
         {tab === 'decisioni' && <Decisioni stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}

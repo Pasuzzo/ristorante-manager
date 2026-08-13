@@ -95,6 +95,13 @@ export interface InputMese {
   mese: number; // 1..12
   ricaviLordi: number; // IVA inclusa
   sanzioni: number; // da ispezioni (calcolate dal motore)
+  /** Buste paga calcolate da contratti.ts (id -> busta). Se presenti
+   *  sostituiscono il calcolo interno: le ore contrattuali e la quota
+   *  fuori busta arrivano da lì. */
+  buste?: Record<string, {
+    lordo: number; nettoInBusta: number; contributiDipendente: number;
+    cashNero: number; ratei: number; costoAzienda: number;
+  }>;
 }
 
 export function tickCassa(
@@ -127,6 +134,16 @@ export function tickCassa(
   paga(t, anno, mese, "F24 dipendenti (16 del mese)", -t.f24MeseSuccessivo);
   t.f24MeseSuccessivo = 0;
   for (const d of r.dipendenti) {
+    const b = inp.buste?.[d.id];
+    if (b) {
+      // busta calcolata da contratti.ts: ore reali, maggiorazioni, quota nero
+      if (b.nettoInBusta > 0) paga(t, anno, mese, `Stipendio netto ${d.nome}`, -b.nettoInBusta);
+      if (b.cashNero > 0) paga(t, anno, mese, `Fuori busta ${d.nome}`, -b.cashNero);
+      t.f24MeseSuccessivo += b.costoAzienda - b.lordo - b.ratei - b.cashNero + b.contributiDipendente
+        + (b.lordo - b.nettoInBusta - b.contributiDipendente); // contributi datore + ritenute
+      t.tfrMaturato += b.ratei;
+      continue;
+    }
     const lordo = lordoDelMese(d, mese, cfg);
     if (d.inRegola) {
       paga(t, anno, mese, `Stipendio netto ${d.nome}`, -lordo * (1 - cfg.tesoreria.ritenuteDipendente));

@@ -33,6 +33,10 @@ import {
 } from "./titolare.ts";
 import { dinamicheCarriera, DipendenteConCarriera, QUOTA_COSTO_CONGEDO } from "./comportamenti.ts";
 import {
+  Orario, Lavoratore, TipoContratto, CONTRATTI, ORARIO,
+  bustaPaga, capacitaSquadra, fabbisogno, oreSettimanali,
+} from "./contratti.ts";
+import {
   OpzioneCommercialista, LivelloCommercialista, opzioniCommercialista,
   riepilogaCostituzione, regoleCapitale, effettiCapitale, poolIniziale, poolCompleto,
   rispondiOfferta, verificaBrigata,
@@ -72,6 +76,8 @@ export interface StatoPartita {
   titolare: Titolare;
   compiti: GestioneCompiti;
   /** capitale sociale versato: patrimonio vincolato, non cassa spendibile */
+  /** monte ore settimanale per dipendente (feriale/festivo) */
+  orari: Record<string, Orario>;
   capitaleVersato: number;
   commercialista: OpzioneCommercialista;
   /** l'annuncio scelto in fase di costituzione */
@@ -115,6 +121,10 @@ export interface DecisioniMese {
   ristrutturazione?: number;
   /** come il titolare organizza i compiti (delega vs fai-da-te) */
   compiti?: Partial<GestioneCompiti>;
+  /** monte ore settimanale per dipendente: { idDipendente: {oreFeriali, oreFestive} } */
+  orari?: Record<string, Orario>;
+  /** in caso di sovraccarico: straordinari (paghi la maggiorazione) o clienti respinti */
+  politicaSovraccarico?: "straordinari" | "respingi";
   /** nuovo menu (ricette + prezzi di vendita decisi dal giocatore) */
   menu?: Ricetta[];
 }
@@ -146,6 +156,10 @@ export interface ReportMese {
   gameOver: boolean;
   /** stato dell'economia questo mese, per la dashboard */
   macro: { inflazione: number; inflazioneAlimentare: number; fiducia: number; salari: number; shock?: string };
+  /** buste paga del mese: id -> costo azienda / lordo / netto */
+  buste: Record<string, { lordo: number; nettoInBusta: number; cashNero: number; costoAzienda: number; oreDichiarate: number; oreNonDichiarate: number }>;
+  /** ore disponibili contro ore necessarie */
+  fabbisogno: { copertiPrevisti: number; capacita: number; gapCoperti: number; oreMancantiCucina: number; oreMancantiSala: number; stato: string };
   /** scheda del titolare, per la dashboard */
   titolare: { nome: string; eta: number; sesso: string; stress: number; burnout: boolean; compiti: GestioneCompiti };
 }
@@ -294,6 +308,7 @@ export function nuovaPartita(c: ConfigNuovaPartita, cfg: FiscalConfig = FISCAL_2
     menu: [],
     titolare: nuovoTitolare(c.titolare.nome, c.titolare.eta, c.titolare.sesso),
     compiti: { ...COMPITI_DEFAULT },
+    orari: Object.fromEntries(staff.map((d) => [d.id, { oreFeriali: 24, oreFestive: 16 }])),
     capitaleVersato: riepilogo.capitaleVersato,
     commercialista,
     immobile: {
@@ -335,6 +350,9 @@ export function avanzaMese(
 
   // ── 1. Applica le decisioni del giocatore
   if (dec.compiti) s.compiti = { ...s.compiti, ...dec.compiti };
+  if (dec.orari) s.orari = { ...s.orari, ...dec.orari };
+  if (!s.orari) s.orari = {};
+  for (const d of s.staff) if (!s.orari[d.id]) s.orari[d.id] = { oreFeriali: 24, oreFestive: 16 };
   // in burnout le decisioni "di visione" vengono ignorate: non ce la fa
   if (s.titolare.burnout) {
     const bloccate: string[] = [];
@@ -428,7 +446,24 @@ export function avanzaMese(
     : s.staff;
   // chi è in congedo non è operativo
   const idCongedo = new Set(((s as any).__inCongedo as string[]) ?? []);
-  const perf = performanceStaff(squadraOperativa.filter((d) => !idCongedo.has(d.id)));
+  const operativi = squadraOperativa.filter((d) => !idCongedo.has(d.id));
+  const perf = performanceStaff(operativi);
+
+  // Capacità dalle ORE contrattuali: è il monte ore a dire quanti coperti reggi.
+  const lavoratori: Lavoratore[] = operativi.map((d) => ({
+    id: d.id, nome: d.nome,
+    ruolo: (d as any).ruoloEsteso ?? d.ruolo,
+    contratto: ((d as any).contratto ?? "indeterminato") as TipoContratto,
+    orario: s.orari[d.id] ?? { oreFeriali: 24, oreFestive: 16 },
+    superminimo: d.superminimo,
+    quotaNero: d.inRegola ? ((d as any).quotaNero ?? 0) : 1,
+    velocita: d.attributi.velocita,
+    morale: d.morale,
+  }));
+  const capOre = capacitaSquadra(lavoratori, Math.round(r.copertiTotali / ORARIO.settimanePerMese));
+  // ~4,33 settimane al mese; il titolare che copre un ruolo è già dentro `operativi`
+  if (lavoratori.length) perf.capacitaCoperti = capOre.copertiSettimana * ORARIO.settimanePerMese;
+  eventi.push(...capOre.avvisi);
   perf.cucina = Math.min(1, perf.cucina * fattoreEsecuzione); // il menu giusto (o sbagliato) per la brigata
   let { serviti, respinti } = serviCoperti(r.copertiTotali, perf);
   // burnout prolungato: il fisico può cedere — giorni a letto, locale a mezzo servizio
@@ -439,6 +474,17 @@ export function avanzaMese(
     s.compiti.ruoloCoperto = null; // il medico è categorico
     s.titolare.stress = Math.max(40, s.titolare.stress - 20); // riposo forzato
     eventi.push(`🏥 Il fisico ha ceduto: ${s.titolare.nome} a letto una settimana, locale a mezzo servizio (${persi} coperti persi). Il medico impone di mollare i turni operativi.`);
+  }
+  let oreStraordinarie = 0;
+  if ((dec.politicaSovraccarico ?? "straordinari") === "straordinari" && respinti > 0 && lavoratori.length) {
+    // si copre fino al 15% in più, pagando la maggiorazione
+    const recuperabili = Math.min(respinti, Math.round(serviti * 0.15));
+    if (recuperabili > 0) {
+      serviti += recuperabili;
+      respinti -= recuperabili;
+      oreStraordinarie = recuperabili / 10; // ~10 coperti per ora di straordinario
+      eventi.push(`⏱️ Straordinari per coprire ${recuperabili} coperti: la squadra regge, ma si stanca.`);
+    }
   }
   const ricaviLordi = serviti * r.scontrinoMedio;
   eventi.push(...r.eventi);
@@ -555,9 +601,26 @@ export function avanzaMese(
   s.ristorante.costiFissiMensili =
     s.costiFissiBase + s.mkt.spesaTradizionaleMese + s.mkt.spesaSocialMese +
     s.scelte.manutenzioneMese + (dec.ristrutturazione ?? 0);
+  // ── Buste paga del mese (contratti.ts) e passaggio alla tesoreria
+  const buste: ReportMese["buste"] = {};
+  const busteTesoreria: Record<string, any> = {};
+  for (const l of lavoratori) {
+    if (l.id === "__titolare__") continue; // il titolare non ha busta
+    const oreReali = oreSettimanali(l.orario) + (oreStraordinarie / Math.max(1, lavoratori.length) / ORARIO.settimanePerMese);
+    const b = bustaPaga(l, oreReali, cfg);
+    buste[l.id] = {
+      lordo: b.lordo, nettoInBusta: b.nettoInBusta, cashNero: b.cashNero,
+      costoAzienda: b.costoAzienda, oreDichiarate: b.oreDichiarate, oreNonDichiarate: b.oreNonDichiarate,
+    };
+    busteTesoreria[l.id] = {
+      lordo: b.lordo, nettoInBusta: b.nettoInBusta, contributiDipendente: b.contributiDipendente,
+      cashNero: b.cashNero, ratei: b.ratei, costoAzienda: b.costoAzienda,
+    };
+  }
+
   const foodCostSalvato = s.ristorante.foodCostPct;
   s.ristorante.foodCostPct = Math.max(0.15, Math.min(0.75, s.ristorante.foodCostPct + deltaFoodCompiti));
-  tickCassa(s.ristorante, s.tesoreria, { anno: s.annoGioco, mese: s.mese, ricaviLordi, sanzioni: sanzioni + costoErroriTitolare + costiCompiti }, cfg);
+  tickCassa(s.ristorante, s.tesoreria, { anno: s.annoGioco, mese: s.mese, ricaviLordi, sanzioni: sanzioni + costoErroriTitolare + costiCompiti, buste: busteTesoreria }, cfg);
   s.ristorante.foodCostPct = foodCostSalvato;
   // quota ridotta per chi è in congedo: l'azienda paga ~25%
   for (const d of s.staff.filter((x) => idCongedo.has(x.id) && x.inRegola)) {
@@ -643,6 +706,9 @@ export function avanzaMese(
     esitiOfferte,
     chiusuraAnno,
     gameOver: s.gameOver,
+    buste,
+    // capacitaSquadra ragiona a settimana: converto la domanda mensile
+    fabbisogno: fabbisogno(lavoratori, Math.round(r.copertiTotali / ORARIO.settimanePerMese)),
     titolare: {
       nome: s.titolare.nome, eta: s.titolare.eta, sesso: s.titolare.sesso,
       stress: Math.round(s.titolare.stress), burnout: s.titolare.burnout,
