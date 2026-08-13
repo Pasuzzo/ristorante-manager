@@ -1,0 +1,67 @@
+{
+  "name": "ZonaOmi",
+  "type": "object",
+  "properties": {
+    "comune": {
+      "type": "string"
+    },
+    "provincia": {
+      "type": "string"
+    },
+    "zona": {
+      "type": "string"
+    },
+    "descrizioneZona": {
+      "type": "string"
+    },
+    "tipologia": {
+      "type": "string"
+    },
+    "posizioneCommerciale": {
+      "type": "string",
+      "enum": [
+        "ottima",
+        "normale",
+        "scadente"
+      ]
+    },
+    "venditaMin": {
+      "type": "number"
+    },
+    "venditaMax": {
+      "type": "number"
+    },
+    "affittoMin": {
+      "type": "number"
+    },
+    "affittoMax": {
+      "type": "number"
+    },
+    "semestre": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "comune",
+    "zona",
+    "semestre"
+  ],
+  "rls": {
+    "read": {},
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

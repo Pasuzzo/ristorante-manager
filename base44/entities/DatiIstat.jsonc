@@ -1,0 +1,49 @@
+{
+  "name": "DatiIstat",
+  "type": "object",
+  "properties": {
+    "inflazioneAnnua": {
+      "type": "number"
+    },
+    "inflazioneAlimentare": {
+      "type": "number"
+    },
+    "fiduciaConsumatori": {
+      "type": "number"
+    },
+    "crescitaSalariAnnua": {
+      "type": "number"
+    },
+    "fonte": {
+      "type": "string"
+    },
+    "aggiornatoAl": {
+      "type": "string"
+    },
+    "salvatoIl": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "fonte",
+    "aggiornatoAl"
+  ],
+  "rls": {
+    "read": {},
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

@@ -1,0 +1,77 @@
+{
+  "name": "Bando",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "titolo": {
+      "type": "string"
+    },
+    "ente": {
+      "type": "string"
+    },
+    "regione": {
+      "type": "string"
+    },
+    "tipo": {
+      "type": "string"
+    },
+    "descrizione": {
+      "type": "string"
+    },
+    "requisiti": {
+      "type": "object"
+    },
+    "quotaCopertura": {
+      "type": "number"
+    },
+    "importoMax": {
+      "type": "number"
+    },
+    "mesiApertura": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    },
+    "mesiIstruttoria": {
+      "type": "number"
+    },
+    "probAccoglimento": {
+      "type": "number"
+    },
+    "costoConsulenza": {
+      "type": "number"
+    },
+    "rateErogazione": {
+      "type": "number"
+    },
+    "fonte": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "titolo",
+    "ente"
+  ],
+  "rls": {
+    "read": {},
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
