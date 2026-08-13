@@ -1,18 +1,18 @@
 /**
  * BACKEND FUNCTION — preparaCostituzione
- * Restituisce al frontend i "mattoni" per il wizard di costituzione:
- * la bacheca degli immobili, il pool di candidati iniziali, le opzioni del
- * commercialista, i costi di costituzione e le regole del capitale sociale.
+ * Restituisce al frontend i mattoni del wizard: bacheca immobili,
+ * catalogo didattico, pool candidati, opzioni commercialista, costi e
+ * regole del capitale.
  *
- * Tutto deterministico rispetto al seed: lo STESSO seed che il frontend
- * usa qui viene poi passato a nuovaPartita, così ciò che il giocatore ha
- * visto (bacheca e pool) è ciò che ottiene.
+ * NOVITÀ: le quotazioni arrivano dall'entità ZonaOmi (aggiornabile senza
+ * rideploy). Se l'entità è vuota si usa il seed del motore.
  *
- * Body:
- * { seed?, forma, budgetIniziale, meseInizio, mqMin?, mqMax?, soloAffitto? }
+ * Tutto deterministico rispetto al seed: lo STESSO seed passato qui va
+ * poi a nuovaPartita, così ciò che il giocatore ha visto è ciò che ottiene.
  */
 import { createClientFromRequest } from "npm:@base44/sdk";
 import { OMI_ESEMPIO, generaBacheca, generaCatalogoDidattico } from "../../shared/engine/immobili.ts";
+import type { QuotazioneOmi } from "../../shared/engine/immobili.ts";
 import { candidatiIniziali } from "../../shared/engine/partita.ts";
 import { opzioniCommercialista, costiCostituzione, regoleCapitale } from "../../shared/engine/costituzione.ts";
 import type { FormaGiuridica } from "../../shared/engine/engine.ts";
@@ -24,6 +24,27 @@ function mulberry32(seed: number) {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+/** Quotazioni dall'entità ZonaOmi; fallback sul seed del motore. */
+async function leggiZone(base44: any, comune?: string): Promise<QuotazioneOmi[]> {
+  try {
+    const righe = await base44.entities.ZonaOmi.list("zona", 200);
+    const filtrate = comune ? righe.filter((z: any) => z.comune === comune) : righe;
+    const zone = (filtrate.length ? filtrate : righe)
+      .filter((z: any) => typeof z.affittoMin === "number")
+      .map((z: any) => ({
+        comune: z.comune, provincia: z.provincia, zona: z.zona,
+        descrizioneZona: z.descrizioneZona, tipologia: z.tipologia,
+        posizioneCommerciale: z.posizioneCommerciale,
+        venditaMin: z.venditaMin, venditaMax: z.venditaMax,
+        affittoMin: z.affittoMin, affittoMax: z.affittoMax,
+        semestre: z.semestre,
+      })) as QuotazioneOmi[];
+    return zone.length ? zone : OMI_ESEMPIO;
+  } catch {
+    return OMI_ESEMPIO;
+  }
 }
 
 export default async function (req: Request): Promise<Response> {
@@ -38,7 +59,9 @@ export default async function (req: Request): Promise<Response> {
     const budgetIniziale = Number(body.budgetIniziale ?? 150_000);
     const meseInizio = Number(body.meseInizio ?? 1);
 
-    const bacheca = generaBacheca(OMI_ESEMPIO, {
+    const zone = await leggiZone(base44, body.comune);
+
+    const bacheca = generaBacheca(zone, {
       quanti: 8,
       budgetMax: budgetIniziale * 0.6,
       mqMin: body.mqMin ? Number(body.mqMin) : undefined,
@@ -48,22 +71,19 @@ export default async function (req: Request): Promise<Response> {
 
     const pool = candidatiIniziali(seed, meseInizio);
 
-    // Catalogo didattico: una scheda per ogni combinazione posizione × taglia × stato.
-    // Deterministico rispetto al seed (rng indipendente dalla bacheca).
-    const catalogo = generaCatalogoDidattico(OMI_ESEMPIO, {
+    const catalogo = generaCatalogoDidattico(zone, {
       budget: budgetIniziale,
       mostraFuoriBudget: true,
       soloAffitto: false,
     }, mulberry32(seed ^ 0xcaca));
 
     return Response.json({
-      seed,
-      bacheca,
-      catalogo,
-      pool,
+      seed, bacheca, catalogo, pool,
       commercialista: opzioniCommercialista(forma),
       costi: costiCostituzione(forma),
       regole: regoleCapitale(forma),
+      comuni: [...new Set(zone.map((z) => z.comune))],
+      fonteQuotazioni: zone === OMI_ESEMPIO ? "seed" : "entita",
     });
   } catch (error) {
     return Response.json({ error: (error as Error).message }, { status: 500 });

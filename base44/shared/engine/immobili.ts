@@ -44,8 +44,8 @@ export interface QuotazioneOmi {
   /** posizione commerciale per i negozi: ottima / normale / scadente */
   posizioneCommerciale: "ottima" | "normale" | "scadente";
   /** €/mq di compravendita */
-  vendiraMin: number;
-  vendiraMax: number;
+  venditaMin: number;
+  venditaMax: number;
   /** €/mq AL MESE di locazione */
   affittoMin: number;
   affittoMax: number;
@@ -58,11 +58,11 @@ export interface QuotazioneOmi {
  * Servono solo a far girare il generatore prima di avere i dati reali.
  */
 export const OMI_ESEMPIO: QuotazioneOmi[] = [
-  { comune: "Rimini", provincia: "RN", zona: "B1", descrizioneZona: "Centro storico", tipologia: "Negozi", posizioneCommerciale: "ottima", vendiraMin: 2400, vendiraMax: 3600, affittoMin: 14, affittoMax: 22, semestre: "2026-1" },
-  { comune: "Rimini", provincia: "RN", zona: "B2", descrizioneZona: "Marina Centro", tipologia: "Negozi", posizioneCommerciale: "ottima", vendiraMin: 2800, vendiraMax: 4200, affittoMin: 18, affittoMax: 28, semestre: "2026-1" },
-  { comune: "Rimini", provincia: "RN", zona: "C1", descrizioneZona: "Semicentro / Viserba", tipologia: "Negozi", posizioneCommerciale: "normale", vendiraMin: 1500, vendiraMax: 2200, affittoMin: 9, affittoMax: 14, semestre: "2026-1" },
-  { comune: "Rimini", provincia: "RN", zona: "D1", descrizioneZona: "Periferia / zona artigianale", tipologia: "Negozi", posizioneCommerciale: "scadente", vendiraMin: 900, vendiraMax: 1400, affittoMin: 5, affittoMax: 9, semestre: "2026-1" },
-  { comune: "Rimini", provincia: "RN", zona: "E1", descrizioneZona: "Forese / extraurbano", tipologia: "Negozi", posizioneCommerciale: "scadente", vendiraMin: 650, vendiraMax: 1000, affittoMin: 4, affittoMax: 7, semestre: "2026-1" },
+  { comune: "Rimini", provincia: "RN", zona: "B1", descrizioneZona: "Centro storico", tipologia: "Negozi", posizioneCommerciale: "ottima", venditaMin: 2400, venditaMax: 3600, affittoMin: 14, affittoMax: 22, semestre: "2026-1" },
+  { comune: "Rimini", provincia: "RN", zona: "B2", descrizioneZona: "Marina Centro", tipologia: "Negozi", posizioneCommerciale: "ottima", venditaMin: 2800, venditaMax: 4200, affittoMin: 18, affittoMax: 28, semestre: "2026-1" },
+  { comune: "Rimini", provincia: "RN", zona: "C1", descrizioneZona: "Semicentro / Viserba", tipologia: "Negozi", posizioneCommerciale: "normale", venditaMin: 1500, venditaMax: 2200, affittoMin: 9, affittoMax: 14, semestre: "2026-1" },
+  { comune: "Rimini", provincia: "RN", zona: "D1", descrizioneZona: "Periferia / zona artigianale", tipologia: "Negozi", posizioneCommerciale: "scadente", venditaMin: 900, venditaMax: 1400, affittoMin: 5, affittoMax: 9, semestre: "2026-1" },
+  { comune: "Rimini", provincia: "RN", zona: "E1", descrizioneZona: "Forese / extraurbano", tipologia: "Negozi", posizioneCommerciale: "scadente", venditaMin: 650, venditaMax: 1000, affittoMin: 4, affittoMax: 7, semestre: "2026-1" },
 ];
 
 // ─────────────────────────────────────────────── Annuncio generato
@@ -140,7 +140,7 @@ export function generaAnnuncio(q: QuotazioneOmi, id: string, rng: () => number):
   // posizione nell'intervallo OMI: più il locale è messo bene, più sta in alto
   const t = Math.min(1, Math.max(0, (rng() * 0.7) + (stato.s === "chiavi_in_mano" ? 0.3 : stato.s === "buono" ? 0.15 : 0)));
   const canoneMqMese = lerp(q.affittoMin, q.affittoMax, t) * stato.scontoCanone;
-  const prezzoMq = lerp(q.vendiraMin, q.vendiraMax, t) * (0.85 + stato.scontoCanone * 0.15);
+  const prezzoMq = lerp(q.venditaMin, q.venditaMax, t) * (0.85 + stato.scontoCanone * 0.15);
 
   const rOfferta = rng();
   const tipoOfferta: TipoOfferta = rOfferta < 0.62 ? "affitto" : rOfferta < 0.85 ? "vendita" : "entrambi";

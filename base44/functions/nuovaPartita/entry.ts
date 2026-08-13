@@ -1,31 +1,43 @@
 /**
  * BACKEND FUNCTION — nuovaPartita
- * Costituisce una nuova partita a partire dalle scelte del wizard:
- * annuncio scelto dalla bacheca, candidati scelti dal pool con relative
- * offerte, commercialista, forma giuridica e capitale.
+ * Crea una partita dalle scelte del wizard e la salva come entità.
  *
- * Body (ConfigNuovaPartita del motore):
- * {
- *   nomeRistorante, forma, budgetIniziale,
- *   annuncio,                      // OGGETTO Annuncio dalla bacheca
- *   modalitaImmobile,              // "affitto" | "acquisto" | "acquisto_mutuo"
- *   assunzioniIniziali: [{ candidato, offerta }],  // dal POOL
- *   commercialista,                // "online" | "studio_locale" | "studio_strutturato"
- *   capitaleSociale?,              // solo srl/srls
- *   stileLocale, titolare: {nome, eta, sesso},
- *   annoCalendario?, meseInizio?, seed?
- * }
- *
- * Risponde con partitaId + logCostituzione (esiti offerte + avvisi).
+ * NOVITÀ: legge l'entità DatiIstat e passa la fotografia economica al
+ * motore. I dati si CONGELANO nello stato: la partita non cambia regole
+ * in corsa e il replay dal seed resta deterministico. Se l'entità è
+ * vuota o illeggibile, il motore usa i suoi valori di ripiego e la
+ * partita parte comunque.
  */
 import { createClientFromRequest } from "npm:@base44/sdk";
 import { nuovaPartita } from "../../shared/engine/partita.ts";
-import { riepilogaCostituzione, opzioniCommercialista, regoleCapitale } from "../../shared/engine/costituzione.ts";
-import { annuncioAConfigLocale } from "../../shared/engine/immobili.ts";
 import { calcolaPianoCosti } from "../../shared/engine/costi-avvio.ts";
+import { annuncioAConfigLocale } from "../../shared/engine/immobili.ts";
+import {
+  opzioniCommercialista, regoleCapitale, riepilogaCostituzione,
+} from "../../shared/engine/costituzione.ts";
+import type { LivelloCommercialista } from "../../shared/engine/costituzione.ts";
 import { FISCAL_2026 } from "../../shared/engine/fiscal-config.ts";
 import type { FormaGiuridica } from "../../shared/engine/engine.ts";
-import type { LivelloCommercialista } from "../../shared/engine/costituzione.ts";
+import type { DatiPartenza } from "../../shared/engine/macro.ts";
+
+/** Legge la fotografia Istat dall'entità. Non lancia mai. */
+async function leggiDatiIstat(base44: any): Promise<DatiPartenza | undefined> {
+  try {
+    const righe = await base44.entities.DatiIstat.list("-salvatoIl", 1);
+    const d = righe?.[0];
+    if (!d || typeof d.inflazioneAnnua !== "number") return undefined;
+    return {
+      inflazioneAnnua: d.inflazioneAnnua,
+      inflazioneAlimentare: d.inflazioneAlimentare ?? d.inflazioneAnnua,
+      fiduciaConsumatori: d.fiduciaConsumatori ?? 0.98,
+      crescitaSalariAnnua: d.crescitaSalariAnnua ?? 0.012,
+      fonte: d.fonte === "istat" ? "istat" : "fallback",
+      aggiornatoAl: d.aggiornatoAl ?? "n/d",
+    };
+  } catch {
+    return undefined; // entità assente o non leggibile: fallback del motore
+  }
+}
 
 export default async function (req: Request): Promise<Response> {
   try {
@@ -36,6 +48,7 @@ export default async function (req: Request): Promise<Response> {
     const body = await req.json().catch(() => ({}));
     const nome: string = body.nomeRistorante ?? "Il mio ristorante";
     const seed = Number(body.seed ?? (crypto.getRandomValues(new Uint32Array(1))[0] | 0));
+    const datiIstat = await leggiDatiIstat(base44);
 
     const stato = nuovaPartita({
       nomeRistorante: nome,
@@ -52,18 +65,15 @@ export default async function (req: Request): Promise<Response> {
       annoCalendario: body.annoCalendario ?? new Date().getFullYear(),
       meseInizio: body.meseInizio,
       seed,
+      datiIstat,
     });
 
     const record = await base44.entities.Partita.create({
-      nome,
-      stato,
-      turni_giocati: 0,
-      game_over: false,
+      nome, stato, turni_giocati: 0, game_over: false,
     });
 
-    // Ricalcola il riepilogo con le funzioni stesse del motore sui dipendenti
-    // che hanno davvero accettato, per esporre mesiAutonomia e budgetConsigliato
-    // (numeri che il motore calcola ma non attacca allo stato).
+    // Riepilogo ricalcolato sui dipendenti che hanno davvero accettato,
+    // per esporre mesiAutonomia e budgetConsigliato al wizard.
     const forma = (body.forma ?? "ditta_ordinaria") as FormaGiuridica;
     const budgetIniziale = Number(body.budgetIniziale ?? 150_000);
     const modalita = body.modalitaImmobile ?? "affitto";
@@ -88,15 +98,12 @@ export default async function (req: Request): Promise<Response> {
 
     return Response.json({
       partitaId: record.id,
-      cassa: stato.tesoreria.saldo,
-      mese: stato.mese,
-      annoGioco: stato.annoGioco,
+      cassa: (stato as any).tesoreria.saldo,
+      mese: (stato as any).mese,
+      annoGioco: (stato as any).annoGioco,
       logCostituzione: (stato as any).__logCostituzione ?? [],
-      cassaOperativa: stato.tesoreria.saldo,
-      capitaleVersato: stato.capitaleVersato,
-      mesiAutonomia: riepilogo.mesiAutonomia,
-      budgetConsigliato: riepilogo.budgetConsigliato,
-      gameOver: stato.gameOver,
+      riepilogo,
+      macroPartenza: (stato as any).macroStato?.partenza ?? null,
     });
   } catch (error) {
     return Response.json({ error: (error as Error).message }, { status: 500 });
