@@ -1,5 +1,5 @@
 import React from 'react';
-import { PixelButton, Stat, StarRating, Money } from '@/components/game/ui';
+import { PixelButton, Stat, StarRating, Money, Chip } from '@/components/game/ui';
 import { Icon } from '@/components/game/icons';
 import EventFeed from '@/components/game/EventFeed';
 import { money, nomeMese } from '@/lib/partita';
@@ -63,6 +63,23 @@ export default function ReportOverlay({ report, onClose, onGameOverChiudi, nomeR
           ) : (
             <>
               <ReportGrid report={report} />
+
+              {report.ispezione && (
+                <div className="rm-card-dark rm-no-radius p-2 border-2 border-rm-red">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Icon name="skull" size={16} color="#c8443c" />
+                    <span className="rm-pixel text-[11px] text-rm-red">{report.ispezione.titolo}</span>
+                  </div>
+                  <ul className="rm-text text-[16px] text-rm-cream list-disc pl-4 space-y-1">
+                    {report.ispezione.trovato.map((t, i) => <li key={i}>{t}</li>)}
+                  </ul>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Chip color="bg-rm-red">Sanzione {money(report.ispezione.sanzione)}</Chip>
+                    {report.ispezione.sospensioneGiorni > 0 && <Chip color="bg-rm-red">Sospensione {report.ispezione.sospensioneGiorni}g</Chip>}
+                    {report.ispezione.durcIrregolareMesi > 0 && <Chip color="bg-rm-red">DURC irreg. {report.ispezione.durcIrregolareMesi} mesi</Chip>}
+                  </div>
+                </div>
+              )}
 
               {report.chiusuraAnno && (
                 <div className="rm-card-dark rm-no-radius p-2">

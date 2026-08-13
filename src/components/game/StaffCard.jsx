@@ -16,7 +16,7 @@ function Attr({ label, value }) {
 
 /** Scheda di un dipendente con attributi, morale, TFR e azioni contrattuali. */
 export default function StaffCard({
-  dipendente, tfr = 0, busta, assenzeGiorni = 0, ferieMaturate = 0,
+  dipendente, tfr = 0, busta, assenzeGiorni = 0, ferieMaturate = 0, affidabilita,
   onLicenzia, onAumenta,
   pendingLicenzia = false, pendingAumento = null,
 }) {
@@ -53,6 +53,14 @@ export default function StaffCard({
         <span className="rm-pixel text-[8px] text-rm-wood-dark uppercase">Morale</span>
         <MoraleFace morale={d.morale ?? 50} />
       </div>
+
+      {affidabilita != null && (
+        <div className="mt-2 flex items-center gap-2">
+          <span className="rm-pixel text-[8px] text-rm-wood-dark uppercase">Affid.</span>
+          <SegmentedBar value={affidabilita} max={100} segments={10} color={affidabilita >= 70 ? '#5a8c46' : affidabilita >= 40 ? '#e8b84b' : '#c8443c'} size={8} />
+          <span className="rm-pixel text-[9px] text-rm-bg w-[24px] text-right">{Math.round(affidabilita)}</span>
+        </div>
+      )}
 
       <div className="mt-2 flex items-center justify-between border-t-2 border-rm-wood-dark/40 pt-1">
         <div className="rm-text text-[16px] text-rm-bg">

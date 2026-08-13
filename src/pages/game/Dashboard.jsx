@@ -119,7 +119,32 @@ export default function Dashboard({ stato, partita }) {
         </PixelPanel>
       </div>
 
+      {report?.durcIrregolare && (
+        <div className="rm-chip bg-rm-red w-full text-center">DURC IRREGOLARE — niente bandi né sgravi finché non rientri</div>
+      )}
+
       <Alerts stato={stato} />
+
+      {(report?.eventiCalendario?.length ?? 0) > 0 && (
+        <PixelPanel title={report ? `Eventi del territorio · ${nomeMese(report.mese)}` : 'Eventi del territorio'} icon="envelope">
+          <div className="space-y-2">
+            {report.eventiCalendario.map((e, i) => {
+              const pct = Math.round((e.effettoMese - 1) * 100);
+              const pos = e.effettoMese >= 1;
+              return (
+                <div key={i} className="rm-card-dark rm-no-radius p-2 flex items-center gap-2">
+                  <span style={{ fontSize: 18 }}>{e.icona}</span>
+                  <div className="flex-1">
+                    <div className="rm-pixel text-[10px] text-rm-cream">{e.nome} · {e.giorni}g</div>
+                    <div className="rm-text text-[14px] text-rm-cream/60">{e.nota}</div>
+                  </div>
+                  <span className={`rm-pixel text-[10px] ${pos ? 'text-rm-green' : 'text-rm-red'}`}>{pos ? '+' : ''}{pct}%</span>
+                </div>
+              );
+            })}
+          </div>
+        </PixelPanel>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <PixelPanel title="Situazione" icon="chef">

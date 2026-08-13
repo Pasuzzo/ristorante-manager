@@ -14,6 +14,7 @@ import Bilancio from '@/pages/game/Bilancio';
 import MenuPage from '@/pages/game/Menu';
 import Turni from '@/pages/game/Turni';
 import Formazione from '@/pages/game/Formazione';
+import Reparti from '@/pages/game/Reparti';
 import { getPartita, avanzaTurno, money, nomeMese } from '@/lib/partita';
 import { formaLabel } from '@/lib/gameData';
 
@@ -33,6 +34,12 @@ function defaultDecisioni(stato) {
     compiti: stato?.compiti ?? {},
     nero: stato?.politicheNero ?? { quotaScontrino: 0, quotaAcquisti: 0, pagaNeroInAssenza: true },
     corsi: [],
+    reparti: stato?.reparti ? {
+      budgetCucina: stato.reparti.budgetCucina, budgetSala: stato.reparti.budgetSala,
+      responsabileCucina: stato.reparti.responsabileCucina ?? null,
+      responsabileSala: stato.reparti.responsabileSala ?? null,
+      sogliaSegnalazione: stato.reparti.sogliaSegnalazione,
+    } : {},
     offerte: [],
     domande: [],
   };
@@ -44,6 +51,7 @@ const TABS = [
   { key: 'staff', label: 'Staff', icon: 'users' },
   { key: 'turni', label: 'Turni', icon: 'cal' },
   { key: 'mercato', label: 'Mercato', icon: 'cart' },
+  { key: 'reparti', label: 'Reparti', icon: 'tag' },
   { key: 'bandi', label: 'Bandi', icon: 'envelope' },
   { key: 'decisioni', label: 'Decisioni', icon: 'mega' },
   { key: 'bilancio', label: 'Bilancio', icon: 'coin' },
@@ -169,6 +177,7 @@ export default function Partita() {
         {tab === 'staff' && <Staff stato={stato} report={report} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'turni' && <Turni stato={stato} report={report} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'mercato' && <Mercato stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
+        {tab === 'reparti' && <Reparti stato={stato} report={report} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'bandi' && <Bandi stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} bandi={bandi} />}
         {tab === 'decisioni' && <Decisioni stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} report={report} />}
         {tab === 'bilancio' && <Bilancio stato={stato} partita={partita} />}

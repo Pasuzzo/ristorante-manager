@@ -13,6 +13,7 @@ export default function Staff({ stato, report, decisioni, setDecisioni }) {
   const buste = report?.buste ?? {};
   const assenze = report?.assenze ?? {};
   const ferie = stato?.assenze?.ferieMaturate ?? {};
+  const affidabilita = report?.affidabilita ?? {};
 
   const toggleLicenzia = (id) => {
     setDecisioni((p) => {
@@ -77,6 +78,7 @@ export default function Staff({ stato, report, decisioni, setDecisioni }) {
             tfr={tfrMap[d.id] ?? 0}
             assenzeGiorni={assenze[d.id] ?? 0}
             ferieMaturate={ferie[d.id] ?? 0}
+            affidabilita={affidabilita[d.id]}
             onLicenzia={() => toggleLicenzia(d.id)}
             onAumenta={() => aumenta(d.id, d.superminimo)}
             pendingLicenzia={decisioni.licenziamenti.includes(d.id)}
