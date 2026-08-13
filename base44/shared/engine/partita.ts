@@ -50,6 +50,9 @@ import {
 } from "./formazione.ts";
 import { EventoMese, generaEventiMese, effettoEventi, COSTO_TV, COSTO_STAND_SAGRA } from "./eventi.ts";
 import {
+  Scadenza, Consiglio, previsioniScadenze, usciteProiettate, consigliCommercialista,
+} from "./previsioni.ts";
+import {
   StatoReparti, Sforamento, RispostaSforamento, nuovoStatoReparti,
   aggiornaAffidabilita, valutaSforamento, effettoBudgetStretto, EFFETTI_RISPOSTA,
 } from "./reparti.ts";
@@ -209,6 +212,10 @@ export interface ReportMese {
   gameOver: boolean;
   /** stato dell'economia questo mese, per la dashboard */
   macro: { inflazione: number; inflazioneAlimentare: number; fiducia: number; salari: number; shock?: string };
+  /** scadenze dei prossimi mesi e consigli del commercialista */
+  scadenze: Scadenza[];
+  usciteProiettate: Array<{ mesiAvanti: number; mese: number; totale: number }>;
+  consigli: Consiglio[];
   /** eventi locali del mese */
   eventiCalendario: EventoMese[];
   /** sforamenti di budget da gestire */
@@ -983,6 +990,38 @@ export function avanzaMese(
     return { ...g, copertiServitiGiorno: servitiG, ricaviGiorno: servitiG * r.scontrinoMedio };
   });
 
+  // ── Cruscotto del commercialista: proietta le scadenze e avvisa
+  const costoPersonaleMese = Object.values(buste).reduce((a, b) => a + b.costoAzienda, 0);
+  const cruscotto = {
+    mese: s.mese,
+    forma: s.ristorante.forma,
+    f24MeseSuccessivo: s.tesoreria.f24MeseSuccessivo,
+    ivaTrimestre: s.tesoreria.ivaTrimestre,
+    saldoImposte: s.tesoreria.saldoImposte,
+    baseAcconti: s.tesoreria.baseAcconti,
+    saldoContributi: s.tesoreria.saldoContributi,
+    baseAccontiContributi: s.tesoreria.baseAccontiContributi,
+    tfrMaturato: s.tesoreria.tfrMaturato,
+    cassa: s.tesoreria.saldo,
+    fidoMax: s.tesoreria.fidoMax,
+    costoPersonaleMese,
+    rateSanzioniMese: avanz.rataMese,
+    affidabilitaCommercialista: s.commercialista.affidabilita,
+    bonusBandi: s.commercialista.bonusBandi,
+    durcIrregolare: s.controlli.durcIrregolare,
+    obblighiFormativiMancanti: obblighi.length,
+    foodCostAttuale: s.ristorante.foodCostPct,
+    quotaNeraAnno: s.nero.ricaviDichiarati + s.nero.ricaviNonDichiarati > 0
+      ? s.nero.ricaviNonDichiarati / (s.nero.ricaviDichiarati + s.nero.ricaviNonDichiarati) : 0,
+    rischioFiscale: rischioFiscale(s.nero, esitoNero.incoerenza, s.staff.filter((d) => !d.inRegola).length),
+    ferieMaturateGiorni: Object.values(s.assenze.ferieMaturate ?? {}).reduce((a, v) => a + v, 0),
+  };
+  const scadenze = previsioniScadenze(cruscotto, cfg, 4);
+  const consigli = consigliCommercialista(cruscotto, scadenze);
+  for (const c of consigli) {
+    if (c.gravita === "allarme") eventi.push(`🧮 Il commercialista: ${c.testo}`);
+  }
+
   const report: ReportMese = {
     annoGioco: s.mese === 12 ? s.annoGioco - 1 : s.annoGioco,
     mese: s.mese,
@@ -1003,6 +1042,9 @@ export function avanzaMese(
     esitiOfferte,
     chiusuraAnno,
     gameOver: s.gameOver,
+    scadenze,
+    usciteProiettate: usciteProiettate(scadenze, 4),
+    consigli,
     eventiCalendario: s.eventiLocali,
     sforamenti,
     ispezione,
