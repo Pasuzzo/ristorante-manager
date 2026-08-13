@@ -65,7 +65,7 @@ export const OMI_ESEMPIO: QuotazioneOmi[] = [
   { comune: "Rimini", provincia: "RN", zona: "E1", descrizioneZona: "Forese / extraurbano", tipologia: "Negozi", posizioneCommerciale: "scadente", vendiraMin: 650, vendiraMax: 1000, affittoMin: 4, affittoMax: 7, semestre: "2026-1" },
 ];
 
-// ─────────────────────────────────────── Annuncio generato
+// ─────────────────────────────────────────────── Annuncio generato
 
 export type StatoImmobileAnnuncio = "da_ristrutturare" | "grezzo" | "buono" | "chiavi_in_mano";
 export type TipoOfferta = "affitto" | "vendita" | "entrambi";
@@ -100,7 +100,7 @@ export interface Annuncio {
   fonteQuotazione: string;
 }
 
-// ─────────────────────────────────────── Generatore
+// ─────────────────────────────────────────────── Generatore
 
 const STATI: Array<{ s: StatoImmobileAnnuncio; peso: number; scontoCanone: number; etichetta: string }> = [
   { s: "da_ristrutturare", peso: 25, scontoCanone: 0.62, etichetta: "da ristrutturare completamente" },
@@ -240,7 +240,7 @@ function eur(n: number): string {
 }
 
 
-// ─────────────────────────────────────── Reality Mood
+// ─────────────────────────────────────────────── Reality Mood
 
 /**
  * REALITY MOOD — lo switch che decide da dove vengono i locali.
@@ -251,8 +251,8 @@ function eur(n: number): string {
  *
  * SPENTO  → catalogo didattico: UN locale per ogni combinazione di
  *           posizione × stato, così il giocatore può scegliere
- *           esattamente il profilo che vuole e capire come cambiano
- *           i costi. I prezzi restano plausibili, ma la vetrina è
+ *           esattamente il profilo che vuole e capire come cambiano i
+ *           costi. I prezzi restano plausibili, ma la vetrina è
  *           costruita per insegnare, non per simulare il mercato.
  */
 
