@@ -164,7 +164,7 @@ export function gradimentoMese(
   copertiMese: number
 ): EsitoGradimento {
   const eventi: string[] = [];
-  const carico = copertiMese / perf.capacitaCoperti;
+  const carico = copertiMese / Math.max(1, perf.capacitaCoperti);
   // attese: fino al 90% della capacità nessun problema, poi degrado rapido
   const fAttese = carico <= 0.9 ? 1 : Math.max(0.4, 1 - (carico - 0.9) * 1.6);
   if (fAttese < 0.85) eventi.push(`⏱️ Staff sotto organico: attese lunghe (carico ${Math.round(carico * 100)}%)`);

@@ -48,6 +48,15 @@ import {
   StatoFormazione, IscrizioneCorso, nuovoStatoFormazione,
   avanzaFormazione, verificaObblighi, gravitaObblighi, autoformazione,
 } from "./formazione.ts";
+import { EventoMese, generaEventiMese, effettoEventi, COSTO_TV, COSTO_STAND_SAGRA } from "./eventi.ts";
+import {
+  StatoReparti, Sforamento, RispostaSforamento, nuovoStatoReparti,
+  aggiornaAffidabilita, valutaSforamento, effettoBudgetStretto, EFFETTI_RISPOSTA,
+} from "./reparti.ts";
+import {
+  StatoControlli, Ente, nuovoStatoControlli, calcolaProntezza,
+  probabilitaControllo, eseguiControllo, applicaEsito, avanzaControlli,
+} from "./controlli.ts";
 import {
   OpzioneCommercialista, LivelloCommercialista, opzioniCommercialista,
   riepilogaCostituzione, regoleCapitale, effettiCapitale, poolIniziale, poolCompleto,
@@ -91,6 +100,12 @@ export interface StatoPartita {
   /** monte ore settimanale per dipendente (feriale/festivo) */
   orari: Record<string, Orario>;
   nero: StatoNero;
+  reparti: StatoReparti;
+  controlli: StatoControlli;
+  /** eventi del mese in corso, generati proceduralmente */
+  eventiLocali: EventoMese[];
+  /** il locale ha un maxischermo */
+  haTv: boolean;
   assenze: StatoAssenze;
   formazione: StatoFormazione;
   /** politiche persistenti sul nero */
@@ -148,6 +163,17 @@ export interface DecisioniMese {
   assenze?: DecisioniAssenze;
   /** iscrizioni ai corsi */
   corsi?: IscrizioneCorso[];
+  /** budget e responsabili di reparto */
+  reparti?: {
+    budgetCucina?: number; budgetSala?: number;
+    responsabileCucina?: string | null; responsabileSala?: string | null;
+    sogliaSegnalazione?: number;
+  };
+  /** risposta a uno sforamento segnalato il mese scorso */
+  rispostaSforamento?: { reparto: "cucina" | "sala"; risposta: RispostaSforamento };
+  /** acquisti una tantum */
+  compraTv?: boolean;
+  standAllaSagra?: boolean;
   /** nuovo menu (ricette + prezzi di vendita decisi dal giocatore) */
   menu?: Ricetta[];
 }
@@ -179,6 +205,16 @@ export interface ReportMese {
   gameOver: boolean;
   /** stato dell'economia questo mese, per la dashboard */
   macro: { inflazione: number; inflazioneAlimentare: number; fiducia: number; salari: number; shock?: string };
+  /** eventi locali del mese */
+  eventiCalendario: EventoMese[];
+  /** sforamenti di budget da gestire */
+  sforamenti: Sforamento[];
+  /** ispezione subita questo mese, se c'è stata */
+  ispezione?: { ente: Ente; titolo: string; trovato: string[]; sanzione: number; sospensioneGiorni: number; durcIrregolareMesi: number };
+  /** affidabilità per dipendente */
+  affidabilita: Record<string, number>;
+  /** DURC irregolare: niente bandi */
+  durcIrregolare: boolean;
   /** registro dichiarato/reale e cassa nera */
   nero: { cassaNera: number; quotaNeraAnno: number; incoerenza: number; rischio: number };
   /** assenze del mese: id -> giorni */
@@ -339,6 +375,10 @@ export function nuovaPartita(c: ConfigNuovaPartita, cfg: FiscalConfig = FISCAL_2
     compiti: { ...COMPITI_DEFAULT },
     orari: Object.fromEntries(staff.map((d) => [d.id, { oreFeriali: 24, oreFestive: 16 }])),
     nero: nuovoStatoNero(),
+    reparti: nuovoStatoReparti(),
+    controlli: nuovoStatoControlli(),
+    eventiLocali: [],
+    haTv: false,
     assenze: nuovoStatoAssenze(),
     formazione: nuovoStatoFormazione(),
     politicheNero: { quotaScontrino: 0, quotaAcquisti: 0, pagaNeroInAssenza: true },
@@ -391,6 +431,38 @@ export function avanzaMese(
   if (!s.formazione) s.formazione = nuovoStatoFormazione();
   if (!s.politicheNero) s.politicheNero = { quotaScontrino: 0, quotaAcquisti: 0, pagaNeroInAssenza: true };
   if (dec.nero) s.politicheNero = { ...s.politicheNero, ...dec.nero };
+  if (!s.reparti) s.reparti = nuovoStatoReparti();
+  if (!s.controlli) s.controlli = nuovoStatoControlli();
+  if (!s.eventiLocali) s.eventiLocali = [];
+  if (dec.reparti) {
+    const r = dec.reparti;
+    if (r.budgetCucina !== undefined) s.reparti.budgetCucina = Math.max(0, r.budgetCucina);
+    if (r.budgetSala !== undefined) s.reparti.budgetSala = Math.max(0, r.budgetSala);
+    if (r.sogliaSegnalazione !== undefined) s.reparti.sogliaSegnalazione = r.sogliaSegnalazione;
+    if (r.responsabileCucina !== undefined) s.reparti.responsabileCucina = r.responsabileCucina ?? undefined;
+    if (r.responsabileSala !== undefined) s.reparti.responsabileSala = r.responsabileSala ?? undefined;
+  }
+  if (dec.compraTv && !s.haTv) {
+    s.haTv = true;
+    s.tesoreria.saldo -= COSTO_TV;
+    eventi.push(`📺 Maxischermo installato (${COSTO_TV}€): con le partite cambia tutto, ma dipende dal tipo di locale.`);
+  }
+  // risposta a uno sforamento del mese scorso
+  if (dec.rispostaSforamento) {
+    const { reparto, risposta } = dec.rispostaSforamento;
+    const idResp = reparto === "cucina" ? s.reparti.responsabileCucina : s.reparti.responsabileSala;
+    const d = s.staff.find((x) => x.id === idResp);
+    const eff = EFFETTI_RISPOSTA[risposta];
+    if (d && eff) {
+      s.reparti.affidabilita[d.id] = Math.max(3, Math.min(98, (s.reparti.affidabilita[d.id] ?? 50) + eff.affidabilita));
+      d.morale = Math.max(5, Math.min(95, d.morale + eff.morale));
+      eventi.push(`🗣️ ${d.nome}: ${eff.nota}`);
+      if (risposta === "ritira_delega") {
+        if (reparto === "cucina") s.reparti.responsabileCucina = undefined;
+        else s.reparti.responsabileSala = undefined;
+      }
+    }
+  }
   // in burnout le decisioni "di visione" vengono ignorate: non ce la fa
   if (s.titolare.burnout) {
     const bloccate: string[] = [];
@@ -477,7 +549,25 @@ export function avanzaMese(
   s.locale.indicePrezziMenu = (s.locale.indicePrezziMenu ?? 1) * (1 + inflazioneMensile(s.macroStato));
 
   // ── 2. Domanda e coperti serviti
+  // ── Eventi locali del mese (fiere, sagre, partite…)
+  s.eventiLocali = generaEventiMese({
+    tipoLocalita: s.locale.tipoLocalita,
+    mese: s.mese,
+    haTv: s.haTv,
+    stileLocale: s.stileLocale,
+    standAllaSagra: !!dec.standAllaSagra,
+  }, rng);
+  const effEventi = effettoEventi(s.eventiLocali);
+  for (const e of s.eventiLocali) {
+    eventi.push(`${e.icona} ${e.nome} (${e.giorni}g): ${e.effettoMese >= 1 ? "+" : ""}${Math.round((e.effettoMese - 1) * 100)}% affluenza. ${e.nota}`);
+  }
+  if (dec.standAllaSagra && s.eventiLocali.some((e) => e.tipo === "sagra")) {
+    s.tesoreria.saldo -= COSTO_STAND_SAGRA;
+  }
+
   const r = generaRicaviMese(s.locale, s.mkt, s.macro, cfg, s.annoCalendario, s.annoGioco, s.mese, s.reputazione, rng);
+  r.copertiTotali = Math.round(r.copertiTotali * effEventi.affluenza);
+  r.scontrinoMedio *= effEventi.scontrino;
   // il titolare che copre un ruolo conta come un membro della squadra
   const squadraOperativa = s.compiti.ruoloCoperto
     ? [...s.staff, titolareComeDipendente(s.titolare, s.compiti.ruoloCoperto)]
@@ -500,7 +590,7 @@ export function avanzaMese(
   }));
   const capOre = capacitaSquadra(lavoratori, Math.round(r.copertiTotali / ORARIO.settimanePerMese));
   // ~4,33 settimane al mese; il titolare che copre un ruolo è già dentro `operativi`
-  if (lavoratori.length) perf.capacitaCoperti = capOre.copertiSettimana * ORARIO.settimanePerMese;
+  if (lavoratori.length) perf.capacitaCoperti = Math.max(1, capOre.copertiSettimana * ORARIO.settimanePerMese);
   eventi.push(...capOre.avvisi);
   perf.cucina = Math.min(1, perf.cucina * fattoreEsecuzione); // il menu giusto (o sbagliato) per la brigata
   let { serviti, respinti } = serviCoperti(r.copertiTotali, perf);
@@ -589,7 +679,7 @@ export function avanzaMese(
   (s as any).__inCongedo = carriere.inCongedo;
 
   const repUpd = aggiornaReputazione(s.reputazione, grad.voto, serviti, s.mkt);
-  s.reputazione = repUpd.rep;
+  s.reputazione = Number.isFinite(repUpd.rep) ? repUpd.rep : 0.05;
   eventi.push(...repUpd.eventi);
 
   // ── 5. TFR di competenza del mese (per i regolari)
@@ -722,9 +812,101 @@ export function avanzaMese(
     }
   }
 
+  // ── Affidabilità di tutta la squadra
+  const sforamenti: Sforamento[] = [];
+  const materieReali = (ricaviLordi / (1 + cfg.iva.somministrazione)) * s.ristorante.foodCostPct;
+  const budgetTot = s.reparti.budgetCucina + s.reparti.budgetSala;
+
+  // budget troppo stretto: la qualità cala
+  if (budgetTot > 0) {
+    const stretta = effettoBudgetStretto(budgetTot, materieReali);
+    if (stretta.avviso) eventi.push(`💰 ${stretta.avviso}`);
+    grad.voto = Math.max(0.05, grad.voto * stretta.moltGradimento);
+    if (stretta.malusMorale > 0) {
+      for (const id of [s.reparti.responsabileCucina, s.reparti.responsabileSala]) {
+        const d = s.staff.find((x) => x.id === id);
+        if (d) d.morale = Math.max(5, d.morale - stretta.malusMorale);
+      }
+    }
+  }
+
+  // sforamenti per reparto
+  for (const rep of ["cucina", "sala"] as const) {
+    const budget = rep === "cucina" ? s.reparti.budgetCucina : s.reparti.budgetSala;
+    if (budget <= 0) continue;
+    const quotaRep = rep === "cucina" ? 0.75 : 0.25; // la cucina assorbe il grosso
+    const idResp = rep === "cucina" ? s.reparti.responsabileCucina : s.reparti.responsabileSala;
+    const resp = s.staff.find((x) => x.id === idResp);
+    const sf = valutaSforamento({
+      reparto: rep, budget, spesoReale: materieReali * quotaRep,
+      rapportoCoperti: r.copertiTotali > 0 ? serviti / r.copertiTotali : 1,
+      inflazioneAlimentare: s.macroStato.inflazioneAlimentare,
+      responsabile: resp as any,
+      affidabilitaResponsabile: resp ? (s.reparti.affidabilita[resp.id] ?? 50) : 50,
+    }, rng);
+    if (sf && sf.quota > s.reparti.sogliaSegnalazione) {
+      sforamenti.push(sf);
+      eventi.push(
+        `📦 Budget ${rep} sforato di ${Math.round(sf.eccesso)}€ (${Math.round(sf.quota * 100)}%)` +
+        (sf.responsabileNome ? ` — ${sf.responsabileNome}` : "") +
+        `. ${sf.spiegazione}` + (sf.segnalatoPrima ? " Ti aveva avvisato." : " Non ti aveva detto niente.")
+      );
+      if (sf.effettoGradimento) grad.voto = Math.min(1, grad.voto + sf.effettoGradimento);
+    }
+  }
+
+  const nonSegnalati = new Set(sforamenti.filter((x) => !x.segnalatoPrima && x.responsabileId).map((x) => x.responsabileId!));
+  eventi.push(...aggiornaAffidabilita(s.staff as any, s.reparti, {
+    carico: serviti / Math.max(1, perf.capacitaCoperti),
+    assenze: esitoAssenze.assenti,
+    sforamentiNonSegnalati: nonSegnalati,
+    burnoutTitolare: s.titolare.burnout,
+  }, rng));
+
+  // ── CONTROLLI: NAS, Finanza, Ispettorato
+  const infortunio = (serviti / Math.max(1, perf.capacitaCoperti)) > 1.25 && rng() < 0.05;
+  if (infortunio) eventi.push("🚑 Infortunio sul lavoro: qualcuno si è fatto male nella confusione del servizio.");
+  const ctxControlli = {
+    mese: s.mese,
+    rischioFiscale: rischioFiscale(s.nero, esitoNero.incoerenza, s.staff.filter((d) => !d.inRegola).length),
+    gravitaFormazione: gravitaObblighi(obblighi),
+    condizioneLocale: s.scelte.condizioneLocale,
+    manutenzione: s.scelte.manutenzioneMese,
+    irregolari: s.staff.filter((d) => !d.inRegola).length,
+    totaleLavoratori: s.staff.length,
+    uscitaConflittuale: morale.dimissionari.length > 0 || (dec.licenziamenti ?? []).length > 0,
+    infortunio,
+    moraleMedio: moraleMedio,
+    affidabilitaCommercialista: s.commercialista.affidabilita,
+    personeCheSanno: (s.reparti.responsabileCucina ? 1 : 0) + (s.reparti.responsabileSala ? 1 : 0),
+  };
+  const prontezza = calcolaProntezza(ctxControlli);
+  let ispezione: ReportMese["ispezione"];
+  let sanzioniControlli = 0;
+  for (const ente of ["nas", "finanza", "ispettorato"] as Ente[]) {
+    if (rng() >= probabilitaControllo(ente, ctxControlli, prontezza, s.controlli.attenzioneResidua)) continue;
+    const esito = eseguiControllo(ente, ctxControlli, prontezza, s.controlli, rng);
+    eventi.push(...esito.eventi);
+    const { esceSubito } = applicaEsito(s.controlli, esito);
+    sanzioniControlli += esceSubito;
+    s.reputazione = Math.max(0.02, s.reputazione - esito.dannoReputazione);
+    if (esito.trovato.length) {
+      ispezione = {
+        ente: esito.ente, titolo: esito.titolo, trovato: esito.trovato,
+        sanzione: esito.sanzione, sospensioneGiorni: esito.sospensioneGiorni,
+        durcIrregolareMesi: esito.durcIrregolareMesi,
+      };
+      // regolarizzazione forzata dopo l'ispezione sul lavoro
+      if (ente === "ispettorato") for (const d of s.staff) d.inRegola = true;
+    }
+    break; // un controllo per mese: il secondo arriva col meccanismo della cascata
+  }
+  const avanz = avanzaControlli(s.controlli);
+  eventi.push(...avanz.eventi);
+
   const foodCostSalvato = s.ristorante.foodCostPct;
   s.ristorante.foodCostPct = Math.max(0.15, Math.min(0.75, s.ristorante.foodCostPct + deltaFoodCompiti));
-  tickCassa(s.ristorante, s.tesoreria, { anno: s.annoGioco, mese: s.mese, ricaviLordi: esitoNero.incassoDichiarato, costoMaterieDichiarato: esitoNero.acquistoDichiarato, sanzioni: sanzioni + costoErroriTitolare + costiCompiti + costoAssenzeMese + esitoFormazione.costo, buste: busteTesoreria }, cfg);
+  tickCassa(s.ristorante, s.tesoreria, { anno: s.annoGioco, mese: s.mese, ricaviLordi: esitoNero.incassoDichiarato, costoMaterieDichiarato: esitoNero.acquistoDichiarato, sanzioni: sanzioni + costoErroriTitolare + costiCompiti + costoAssenzeMese + esitoFormazione.costo + sanzioniControlli + avanz.rataMese, buste: busteTesoreria }, cfg);
   s.ristorante.foodCostPct = foodCostSalvato;
   // quota ridotta per chi è in congedo: l'azienda paga ~25%
   for (const d of s.staff.filter((x) => idCongedo.has(x.id) && x.inRegola)) {
@@ -813,6 +995,11 @@ export function avanzaMese(
     esitiOfferte,
     chiusuraAnno,
     gameOver: s.gameOver,
+    eventiCalendario: s.eventiLocali,
+    sforamenti,
+    ispezione,
+    affidabilita: { ...s.reparti.affidabilita },
+    durcIrregolare: s.controlli.durcIrregolare,
     nero: {
       cassaNera: s.nero.cassaNera,
       quotaNeraAnno: s.nero.ricaviDichiarati + s.nero.ricaviNonDichiarati > 0
