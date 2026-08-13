@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Icon } from '@/components/game/icons';
 import { PixelButton, StarRating, Money } from '@/components/game/ui';
 import ReportOverlay from '@/components/game/ReportOverlay';
+import CalendarStrip from '@/components/game/CalendarStrip';
 import Dashboard from '@/pages/game/Dashboard';
 import Titolare from '@/pages/game/Titolare';
 import Staff from '@/pages/game/Staff';
@@ -56,6 +57,7 @@ export default function Partita() {
   const [report, setReport] = useState(null);
   const [showReport, setShowReport] = useState(false);
   const [bandi, setBandi] = useState(null);
+  const [playback, setPlayback] = useState(null);
 
   const carica = async () => {
     try {
@@ -103,7 +105,7 @@ export default function Partita() {
       setPartita(agg);
       setReport(res.report);
       setBandi(res.bandi ?? null);
-      setShowReport(true);
+      setPlayback({ giorni: res.report?.giorni ?? [], mese: res.report?.mese });
       setDecisioni(defaultDecisioni(agg.stato));
     } catch (e) {
       const msg = e?.response?.data?.error || e?.message || 'Errore';
@@ -143,6 +145,16 @@ export default function Partita() {
       </header>
 
       {errore && <div className="rm-card-dark rm-no-radius p-2 mb-3 text-rm-red rm-text text-[16px]">{errore}</div>}
+
+      {playback && (
+        <div className="px-2 mb-3">
+          <CalendarStrip
+            giorni={playback.giorni}
+            nomeMese={nomeMese(playback.mese)}
+            onFine={() => { setPlayback(null); setShowReport(true); }}
+          />
+        </div>
+      )}
 
       {/* Contenuto del tab */}
       <main className="px-2">
