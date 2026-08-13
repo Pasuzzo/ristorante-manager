@@ -37,6 +37,18 @@ import {
   bustaPaga, capacitaSquadra, fabbisogno, oreSettimanali,
 } from "./contratti.ts";
 import {
+  StatoNero, DecisioniNero, nuovoStatoNero, registraMese,
+  prelevaContante, rischioFiscale, chiudiAnnoNero,
+} from "./nero.ts";
+import {
+  StatoAssenze, DecisioniAssenze, nuovoStatoAssenze, aggiornaAssenze,
+  costoAssenza, malusMoralePerdita,
+} from "./assenze.ts";
+import {
+  StatoFormazione, IscrizioneCorso, nuovoStatoFormazione,
+  avanzaFormazione, verificaObblighi, gravitaObblighi, autoformazione,
+} from "./formazione.ts";
+import {
   OpzioneCommercialista, LivelloCommercialista, opzioniCommercialista,
   riepilogaCostituzione, regoleCapitale, effettiCapitale, poolIniziale, poolCompleto,
   rispondiOfferta, verificaBrigata,
@@ -78,6 +90,11 @@ export interface StatoPartita {
   /** capitale sociale versato: patrimonio vincolato, non cassa spendibile */
   /** monte ore settimanale per dipendente (feriale/festivo) */
   orari: Record<string, Orario>;
+  nero: StatoNero;
+  assenze: StatoAssenze;
+  formazione: StatoFormazione;
+  /** politiche persistenti sul nero */
+  politicheNero: DecisioniNero;
   capitaleVersato: number;
   commercialista: OpzioneCommercialista;
   /** l'annuncio scelto in fase di costituzione */
@@ -125,6 +142,12 @@ export interface DecisioniMese {
   orari?: Record<string, Orario>;
   /** in caso di sovraccarico: straordinari (paghi la maggiorazione) o clienti respinti */
   politicaSovraccarico?: "straordinari" | "respingi";
+  /** quote di incassi/acquisti non dichiarati e politica del fuori busta */
+  nero?: DecisioniNero;
+  /** ferie concesse e chiusura collettiva */
+  assenze?: DecisioniAssenze;
+  /** iscrizioni ai corsi */
+  corsi?: IscrizioneCorso[];
   /** nuovo menu (ricette + prezzi di vendita decisi dal giocatore) */
   menu?: Ricetta[];
 }
@@ -156,6 +179,12 @@ export interface ReportMese {
   gameOver: boolean;
   /** stato dell'economia questo mese, per la dashboard */
   macro: { inflazione: number; inflazioneAlimentare: number; fiducia: number; salari: number; shock?: string };
+  /** registro dichiarato/reale e cassa nera */
+  nero: { cassaNera: number; quotaNeraAnno: number; incoerenza: number; rischio: number };
+  /** assenze del mese: id -> giorni */
+  assenze: Record<string, number>;
+  /** corsi obbligatori mancanti */
+  obblighiFormativi: Array<{ nome: string; mancanti: number; scaduto: boolean; costoTotale: number; oreTotali: number }>;
   /** buste paga del mese: id -> costo azienda / lordo / netto */
   buste: Record<string, { lordo: number; nettoInBusta: number; cashNero: number; costoAzienda: number; oreDichiarate: number; oreNonDichiarate: number }>;
   /** ore disponibili contro ore necessarie */
@@ -309,6 +338,10 @@ export function nuovaPartita(c: ConfigNuovaPartita, cfg: FiscalConfig = FISCAL_2
     titolare: nuovoTitolare(c.titolare.nome, c.titolare.eta, c.titolare.sesso),
     compiti: { ...COMPITI_DEFAULT },
     orari: Object.fromEntries(staff.map((d) => [d.id, { oreFeriali: 24, oreFestive: 16 }])),
+    nero: nuovoStatoNero(),
+    assenze: nuovoStatoAssenze(),
+    formazione: nuovoStatoFormazione(),
+    politicheNero: { quotaScontrino: 0, quotaAcquisti: 0, pagaNeroInAssenza: true },
     capitaleVersato: riepilogo.capitaleVersato,
     commercialista,
     immobile: {
@@ -353,6 +386,11 @@ export function avanzaMese(
   if (dec.orari) s.orari = { ...s.orari, ...dec.orari };
   if (!s.orari) s.orari = {};
   for (const d of s.staff) if (!s.orari[d.id]) s.orari[d.id] = { oreFeriali: 24, oreFestive: 16 };
+  if (!s.nero) s.nero = nuovoStatoNero();
+  if (!s.assenze) s.assenze = nuovoStatoAssenze();
+  if (!s.formazione) s.formazione = nuovoStatoFormazione();
+  if (!s.politicheNero) s.politicheNero = { quotaScontrino: 0, quotaAcquisti: 0, pagaNeroInAssenza: true };
+  if (dec.nero) s.politicheNero = { ...s.politicheNero, ...dec.nero };
   // in burnout le decisioni "di visione" vengono ignorate: non ce la fa
   if (s.titolare.burnout) {
     const bloccate: string[] = [];
@@ -601,12 +639,47 @@ export function avanzaMese(
   s.ristorante.costiFissiMensili =
     s.costiFissiBase + s.mkt.spesaTradizionaleMese + s.mkt.spesaSocialMese +
     s.scelte.manutenzioneMese + (dec.ristrutturazione ?? 0);
+  // ── Assenze: ferie che maturano, malattie che arrivano
+  const esitoAssenze = aggiornaAssenze(
+    s.staff as any, s.assenze,
+    { mese: s.mese, caricoLavoro: serviti / Math.max(1, perf.capacitaCoperti) },
+    { ...(dec.assenze ?? {}), pagaNeroInAssenza: s.politicheNero.pagaNeroInAssenza },
+    rng,
+  );
+  eventi.push(...esitoAssenze.eventi);
+
+  // ── Formazione: corsi in aula (ore sottratte) e autoformazione
+  const esitoFormazione = avanzaFormazione(s.formazione, dec.corsi ?? [], s.staff, rng);
+  eventi.push(...esitoFormazione.eventi);
+  for (const [id, mig] of Object.entries(esitoFormazione.miglioramenti)) {
+    const d = s.staff.find((x) => x.id === id);
+    if (d) for (const [k, v] of Object.entries(mig)) {
+      (d.attributi as any)[k] = Math.min(20, ((d.attributi as any)[k] ?? 10) + (v as number));
+    }
+  }
+  const auto = autoformazione(s.staff as any, s.formazione, rng);
+  eventi.push(...auto.eventi);
+  for (const id of auto.siSonoFormati) {
+    const d = s.staff.find((x) => x.id === id) as DipendenteConCarriera | undefined;
+    if (d?.carriera) d.carriera.richiesta = {
+      tipo: "crescita",
+      superminimoRichiesto: Math.round((d.superminimo + 0.08) * 100) / 100,
+      mesiResidui: 3,
+    };
+  }
+  const obblighi = verificaObblighi(s.staff as any, s.formazione);
+
   // ── Buste paga del mese (contratti.ts) e passaggio alla tesoreria
   const buste: ReportMese["buste"] = {};
   const busteTesoreria: Record<string, any> = {};
   for (const l of lavoratori) {
     if (l.id === "__titolare__") continue; // il titolare non ha busta
-    const oreReali = oreSettimanali(l.orario) + (oreStraordinarie / Math.max(1, lavoratori.length) / ORARIO.settimanePerMese);
+    const persoAssenze = esitoAssenze.quotaOrePerse[l.id] ?? 0;
+    const oreAula = (esitoFormazione.oreSottratte[l.id] ?? 0) / ORARIO.settimanePerMese;
+    const oreReali = Math.max(0,
+      oreSettimanali(l.orario) * (1 - persoAssenze)
+      - oreAula
+      + oreStraordinarie / Math.max(1, lavoratori.length) / ORARIO.settimanePerMese);
     const b = bustaPaga(l, oreReali, cfg);
     buste[l.id] = {
       lordo: b.lordo, nettoInBusta: b.nettoInBusta, cashNero: b.cashNero,
@@ -618,9 +691,40 @@ export function avanzaMese(
     };
   }
 
+  // ── Conseguenze economiche delle assenze (e del fuori busta sospeso)
+  let costoAssenzeMese = 0;
+  for (const [id, giorni] of Object.entries(esitoAssenze.assenti)) {
+    const d = s.staff.find((x) => x.id === id);
+    const b = buste[id];
+    if (!d || !b) continue;
+    const ca = costoAssenza(
+      d as any, giorni, b.lordo, b.cashNero,
+      { pagaNeroInAssenza: s.politicheNero.pagaNeroInAssenza },
+    );
+    costoAssenzeMese += ca.costoAzienda;
+    eventi.push(...ca.eventi);
+    if (ca.perditaLavoratore > 0) {
+      d.morale = Math.max(5, d.morale - malusMoralePerdita(ca.perditaLavoratore, b.lordo));
+    }
+  }
+
+  // ── Registro dichiarato/reale: quanto di questo mese finisce nei libri
+  const costoMaterie = (ricaviLordi / (1 + cfg.iva.somministrazione)) * s.ristorante.foodCostPct;
+  const esitoNero = registraMese(s.nero, ricaviLordi, costoMaterie, s.politicheNero);
+  eventi.push(...esitoNero.eventi);
+  // il fuori busta si paga dal contante non dichiarato
+  const totCashNero = Object.values(buste).reduce((a, b) => a + b.cashNero, 0);
+  if (totCashNero > 0) {
+    const { mancante } = prelevaContante(s.nero, totCashNero);
+    if (mancante > 1) {
+      eventi.push(`⚠️ Mancano ${Math.round(mancante)}€ di contante per pagare il fuori busta: la squadra se ne accorge.`);
+      for (const d of s.staff) if (buste[d.id]?.cashNero > 0) d.morale = Math.max(5, d.morale - 8);
+    }
+  }
+
   const foodCostSalvato = s.ristorante.foodCostPct;
   s.ristorante.foodCostPct = Math.max(0.15, Math.min(0.75, s.ristorante.foodCostPct + deltaFoodCompiti));
-  tickCassa(s.ristorante, s.tesoreria, { anno: s.annoGioco, mese: s.mese, ricaviLordi, sanzioni: sanzioni + costoErroriTitolare + costiCompiti, buste: busteTesoreria }, cfg);
+  tickCassa(s.ristorante, s.tesoreria, { anno: s.annoGioco, mese: s.mese, ricaviLordi: esitoNero.incassoDichiarato, costoMaterieDichiarato: esitoNero.acquistoDichiarato, sanzioni: sanzioni + costoErroriTitolare + costiCompiti + costoAssenzeMese + esitoFormazione.costo, buste: busteTesoreria }, cfg);
   s.ristorante.foodCostPct = foodCostSalvato;
   // quota ridotta per chi è in congedo: l'azienda paga ~25%
   for (const d of s.staff.filter((x) => idCongedo.has(x.id) && x.inRegola)) {
@@ -630,7 +734,9 @@ export function avanzaMese(
 
   // ── 7. Accumulo fiscale di competenza
   const forfait = s.ristorante.forma === "ditta_forfettaria";
-  const ricaviFiscali = forfait ? ricaviLordi : ricaviLordi / (1 + cfg.iva.somministrazione);
+  const ricaviFiscali = forfait
+    ? esitoNero.incassoDichiarato
+    : esitoNero.incassoDichiarato / (1 + cfg.iva.somministrazione);
   s.fiscale.ricavi += ricaviFiscali;
   s.fiscale.costiDeducibili +=
     ricaviFiscali * s.ristorante.foodCostPct + s.ristorante.costiFissiMensili +
@@ -661,6 +767,7 @@ export function avanzaMese(
       `Utile netto ${fmt(ch.utileNetto)}`,
     ];
     s.fiscale = { ricavi: 0, costiDeducibili: 0 };
+    chiudiAnnoNero(s.nero);
     s.ristorante.annoAttivita++;
     s.annoGioco++;
     s.annoCalendario++;
@@ -706,6 +813,19 @@ export function avanzaMese(
     esitiOfferte,
     chiusuraAnno,
     gameOver: s.gameOver,
+    nero: {
+      cassaNera: s.nero.cassaNera,
+      quotaNeraAnno: s.nero.ricaviDichiarati + s.nero.ricaviNonDichiarati > 0
+        ? s.nero.ricaviNonDichiarati / (s.nero.ricaviDichiarati + s.nero.ricaviNonDichiarati) : 0,
+      incoerenza: esitoNero.incoerenza,
+      rischio: rischioFiscale(s.nero, esitoNero.incoerenza, s.staff.filter((d) => !d.inRegola).length)
+        + gravitaObblighi(obblighi) * 0.2,
+    },
+    assenze: esitoAssenze.assenti,
+    obblighiFormativi: obblighi.map((o) => ({
+      nome: o.corso.nome, mancanti: o.mancanti, scaduto: o.scaduto,
+      costoTotale: o.costoTotale, oreTotali: o.oreTotali,
+    })),
     buste,
     // capacitaSquadra ragiona a settimana: converto la domanda mensile
     fabbisogno: fabbisogno(lavoratori, Math.round(r.copertiTotali / ORARIO.settimanePerMese)),

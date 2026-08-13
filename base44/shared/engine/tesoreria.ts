@@ -98,6 +98,9 @@ export interface InputMese {
   /** Buste paga calcolate da contratti.ts (id -> busta). Se presenti
    *  sostituiscono il calcolo interno: le ore contrattuali e la quota
    *  fuori busta arrivano da lì. */
+  /** costo materie prime DICHIARATO (fatturato). Se assente si stima dai
+   *  ricavi, ma con il nero attivo va passato dal registro. */
+  costoMaterieDichiarato?: number;
   buste?: Record<string, {
     lordo: number; nettoInBusta: number; contributiDipendente: number;
     cashNero: number; ratei: number; costoAzienda: number;
@@ -120,7 +123,8 @@ export function tickCassa(
   // 2) FORNITORI — pago le fatture del mese scorso, accumulo quelle di oggi
   paga(t, anno, mese, "Fornitori (fatture mese prec.)", -t.debitiFornitori);
   const ricaviNetti = inp.ricaviLordi / (1 + cfg.iva.somministrazione);
-  const materieNette = ricaviNetti * r.foodCostPct;
+  // col nero attivo le materie DICHIARATE le decide il registro, non i ricavi in chiaro
+  const materieNette = inp.costoMaterieDichiarato ?? ricaviNetti * r.foodCostPct;
   const ivaAcquisti = materieNette * cfg.iva.mediaAcquisti;
   t.debitiFornitori = materieNette + ivaAcquisti; // pagherò il mese prossimo
 
