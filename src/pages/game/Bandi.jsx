@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { PixelPanel, PixelButton, Chip } from '@/components/game/ui';
-import { CATALOGO_ESEMPIO, bandiDisponibili, verificaEleggibilita } from '../../../base44/shared/engine/bandi';
 import { money, nomeMese } from '@/lib/partita';
 
 const ENTE_LABEL = { stato: 'Stato', regione: 'Regione', ue: 'Unione Europea', camera_commercio: 'Camera di Commercio', comune: 'Comune' };
@@ -11,26 +10,6 @@ const TIPO_LABEL = {
 };
 const STATO_LABEL = { in_istruttoria: 'In istruttoria', accolta: 'Accolta', respinta: 'Respinta', erogazione: 'In erogazione' };
 const STATO_BG = { erogazione: '#5a8c46', accolta: '#5a8c46', respinta: '#c8443c', in_istruttoria: '#e8b84b' };
-
-function buildProfilo(stato, investimentoPrevisto) {
-  const mese = stato?.mese ?? 1;
-  const ricavi = stato?.fiscale?.ricavi ?? 0;
-  return {
-    etaTitolare: stato?.titolare?.eta ?? 35,
-    titolareFemminile: stato?.titolare?.sesso === 'F',
-    anniAttivita: stato?.ristorante?.annoAttivita ?? 1,
-    formaGiuridica: stato?.ristorante?.forma ?? 'ditta_forfettaria',
-    ricaviUltimoAnno: ricavi > 0 ? ricavi * (12 / Math.max(1, mese)) : 0,
-    dipendentiRegolari: (stato?.staff ?? []).filter((d) => d.inRegola).length,
-    nuoveAssunzioniAnno: stato?.nuoveAssunzioniAnno ?? 0,
-    zona: stato?.locale?.tipoLocalita ?? '',
-    regione: 'Emilia-Romagna',
-    investimentoPrevisto,
-    haAccessibilita: false,
-    usaFilieraCorta: false,
-    haSanzioniLavoro: stato?.haAvutoSanzioniLavoro ?? false,
-  };
-}
 
 function DomandaCard({ d }) {
   return (
@@ -48,32 +27,32 @@ function DomandaCard({ d }) {
   );
 }
 
-function BandoCard({ esito, stato, onPresenta, inAttesa }) {
+function BandoCard({ esito, onPresenta, inAttesa }) {
   const b = esito.bando;
-  const [inv, setInv] = useState(Math.max(b.requisiti.investimentoMin ?? 5000, 10000));
-  const live = verificaEleggibilita(b, buildProfilo(stato, inv));
-  const ammissibile = live.ammissibile && !inAttesa;
+  const ammissibile = esito.ammissibile && !inAttesa;
+  const [inv, setInv] = useState(b.requisiti?.investimentoMin ?? 10000);
   return (
-    <div className={`rm-card rm-no-radius rm-shadow p-2 ${!live.ammissibile ? 'opacity-80' : ''}`}>
+    <div className={`rm-card rm-no-radius rm-shadow p-2 ${!esito.ammissibile ? 'opacity-80' : ''}`}>
       <div className="flex items-start justify-between gap-2">
         <div>
           <div className="rm-pixel text-[10px] text-rm-bg">{b.titolo}</div>
           <div className="rm-text text-[14px] text-rm-wood-dark">{ENTE_LABEL[b.ente]} · {TIPO_LABEL[b.tipo]} · max {money(b.importoMax)}</div>
         </div>
-        {inAttesa ? <Chip color="bg-rm-blue">In attesa</Chip> : live.ammissibile ? <Chip color="bg-rm-green">Ammissibile</Chip> : <Chip color="bg-rm-red">Escluso</Chip>}
+        {inAttesa ? <Chip color="bg-rm-blue">In attesa</Chip> : esito.ammissibile ? <Chip color="bg-rm-green">Ammissibile</Chip> : <Chip color="bg-rm-red">Escluso</Chip>}
       </div>
       <div className="rm-text text-[14px] text-rm-bg/80 mt-1">{b.descrizione}</div>
       <div className="rm-text text-[13px] text-rm-wood-dark mt-1">Copertura {Math.round(b.quotaCopertura * 100)}% · istruttoria {b.mesiIstruttoria} mesi · esito stimato {Math.round(b.probAccoglimento * 100)}%</div>
-      {b.requisiti.investimentoMin !== undefined && (
+      <div className="rm-pixel text-[9px] text-rm-gold mt-1">Contributo stimato: {money(esito.contributoStimato)}</div>
+      {b.requisiti?.investimentoMin !== undefined && (
         <div className="mt-2">
           <div className="flex items-center justify-between">
             <span className="rm-pixel text-[7px] text-rm-bg uppercase">Investimento previsto</span>
-            <span className="rm-pixel text-[9px] text-rm-gold">{money(inv)} → contributo {money(live.contributoStimato)}</span>
+            <span className="rm-pixel text-[9px] text-rm-gold">{money(inv)}</span>
           </div>
           <input type="range" min={b.requisiti.investimentoMin} max={b.importoMax * 2} step={1000} className="rm-input" value={inv} onChange={(e) => setInv(Number(e.target.value))} />
         </div>
       )}
-      {live.motiviEsclusione.length > 0 && <div className="rm-text text-[13px] text-rm-red mt-1">{live.motiviEsclusione[0]}</div>}
+      {esito.motiviEsclusione?.length > 0 && <div className="rm-text text-[13px] text-rm-red mt-1">{esito.motiviEsclusione[0]}</div>}
       <div className="flex items-center justify-between mt-2">
         <span className="rm-text text-[13px] text-rm-bg/60">Consulenza {money(b.costoConsulenza)}</span>
         <PixelButton variant={ammissibile ? 'green' : 'wood'} disabled={!ammissibile} onClick={() => onPresenta(b.id, inv)} className="text-[9px] py-1">Presenta domanda</PixelButton>
@@ -82,12 +61,12 @@ function BandoCard({ esito, stato, onPresenta, inAttesa }) {
   );
 }
 
-/** Sezione Bandi: agevolazioni aperte, eleggibilità, domande in corso. */
-export default function Bandi({ stato, decisioni, setDecisioni }) {
+/** Sezione Bandi: i bandi aperti arrivano dal server (risposta di avanzaMese). */
+export default function Bandi({ stato, decisioni, setDecisioni, bandi }) {
   const mese = stato?.mese ?? 1;
   const domande = stato?.domande ?? [];
   const inAttesa = new Set((decisioni.domande ?? []).map((d) => d.bandoId));
-  const disponibili = bandiDisponibili(CATALOGO_ESEMPIO, buildProfilo(stato, 10000), mese);
+  const disponibili = bandi ?? [];
 
   const presenta = (bandoId, investimentoPrevisto) => {
     setDecisioni((p) => ({ ...p, domande: [...(p.domande ?? []), { bandoId, investimentoPrevisto }] }));
@@ -114,7 +93,7 @@ export default function Bandi({ stato, decisioni, setDecisioni }) {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {disponibili.map((e) => (
-            <BandoCard key={e.bando.id} esito={e} stato={stato} onPresenta={presenta} inAttesa={inAttesa.has(e.bando.id)} />
+            <BandoCard key={e.bando.id} esito={e} onPresenta={presenta} inAttesa={inAttesa.has(e.bando.id)} />
           ))}
         </div>
       )}

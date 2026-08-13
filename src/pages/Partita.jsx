@@ -55,6 +55,7 @@ export default function Partita() {
   const [avanzando, setAvanzando] = useState(false);
   const [report, setReport] = useState(null);
   const [showReport, setShowReport] = useState(false);
+  const [bandi, setBandi] = useState(null);
 
   const carica = async () => {
     try {
@@ -101,6 +102,7 @@ export default function Partita() {
       const agg = await getPartita(id);
       setPartita(agg);
       setReport(res.report);
+      setBandi(res.bandi ?? null);
       setShowReport(true);
       setDecisioni(defaultDecisioni(agg.stato));
     } catch (e) {
@@ -148,7 +150,7 @@ export default function Partita() {
         {tab === 'titolare' && <Titolare stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'staff' && <Staff stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'mercato' && <Mercato stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
-        {tab === 'bandi' && <Bandi stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
+        {tab === 'bandi' && <Bandi stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} bandi={bandi} />}
         {tab === 'decisioni' && <Decisioni stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'bilancio' && <Bilancio stato={stato} partita={partita} />}
         {tab === 'menu' && <MenuPage stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
