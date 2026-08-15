@@ -119,9 +119,9 @@ export default function Dashboard({ stato, partita }) {
         </PixelPanel>
       </div>
 
-      {report?.durcIrregolare && (
-        <div className="rm-chip bg-rm-red w-full text-center">DURC IRREGOLARE — niente bandi né sgravi finché non rientri</div>
-      )}
+      <div className={`rm-chip w-full text-center ${report?.durcIrregolare ? 'bg-rm-red' : 'bg-rm-green'}`}>
+        📄 {report?.durcIrregolare ? 'DURC IRREGOLARE — niente bandi né sgravi finché non rientri' : 'DURC regolare'}
+      </div>
 
       <Alerts stato={stato} />
 

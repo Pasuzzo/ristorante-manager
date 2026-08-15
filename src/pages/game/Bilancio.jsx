@@ -39,6 +39,11 @@ export default function Bilancio({ stato, partita }) {
         <Riga label="Saldo imposte a giugno" value={money(tes.saldoImposte ?? 0)} accent="text-rm-red" />
         <Riga label="Acconti imposte (base)" value={money(tes.baseAcconti ?? 0)} />
         <Riga label="Saldo contributi titolare" value={money(tes.saldoContributi ?? 0)} accent="text-rm-red" />
+        <Riga
+          label="Ritardi contributivi"
+          value={`${stato?.controlli?.versamentiInRitardo ?? 0} su 2`}
+          accent={(stato?.controlli?.versamentiInRitardo ?? 0) > 0 ? 'text-rm-red' : 'text-rm-green'}
+        />
         {tes.insolvente && <div className="rm-chip bg-rm-red w-full text-center mt-2">INSOLVENZA — fido sforato</div>}
       </PixelPanel>
 
