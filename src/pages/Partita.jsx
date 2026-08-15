@@ -43,6 +43,8 @@ function defaultDecisioni(stato) {
     } : {},
     offerte: [],
     domande: [],
+    domandeBandi: [],
+    investimentoDichiarato: 0,
   };
 }
 
@@ -183,7 +185,7 @@ export default function Partita() {
         {tab === 'turni' && <Turni stato={stato} report={report} decisioni={decisioni} setDecisioni={setDecisioni} giornoCorrente={giornoCorrente} />}
         {tab === 'mercato' && <Mercato stato={stato} report={report} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'reparti' && <Reparti stato={stato} report={report} decisioni={decisioni} setDecisioni={setDecisioni} />}
-        {tab === 'bandi' && <Bandi stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} bandi={bandi} />}
+        {tab === 'bandi' && <Bandi report={report} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'decisioni' && <Decisioni stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} report={report} />}
         {tab === 'bilancio' && <Bilancio stato={stato} partita={partita} />}
         {tab === 'menu' && <MenuPage stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
