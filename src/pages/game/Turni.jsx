@@ -1,188 +1,361 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { money } from '@/lib/partita';
 import { PixelPanel, SectionTitle, Stat, SegmentedBar, Chip, PixelButton } from '@/components/game/ui';
 import { RUOLI_ESTESI } from '@/lib/gameData';
 
 /**
- * Turni: si decide il monte ore settimanale di ognuno, diviso tra giorni
- * feriali e festivi. Le ore contrattuali non sono ore di servizio (prep,
- * carico, pulizie ne mangiano una fetta): il motore lo tiene già in conto.
- *
- * Le modifiche vanno in decisioni.orari e valgono dal prossimo mese.
+ * Turni: la settimana si pianifica, non si dichiara. Il monte ore è un
+ * RISULTATO della griglia. Le modifiche vanno in decisioni.griglia.
  */
 
-const FULL_TIME = 40;
+const GIORNI = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
+const FINESTRE = {
+  pranzo: { inizio: 8, fine: 15, aperturaDefault: 12, aperturaMin: 8, aperturaMax: 14.5 },
+  cena: { inizio: 15.5, fine: 23.5, aperturaDefault: 19, aperturaMin: 15.5, aperturaMax: 22 },
+};
+const SETTIMANE_MESE = 4.33;
 
-function StepperOre({ label, value, onChange, max = 40 }) {
-  const set = (v) => onChange(Math.max(0, Math.min(max, v)));
+const CUCINA = new Set(['lavapiatti', 'commis', 'cuoco', 'chef', 'sous_chef', 'pizzaiolo', 'pasticcere']);
+const repartoDi = (ruolo) => (CUCINA.has(ruolo) ? 'cucina' : 'sala');
+
+function fmtTime(dec) {
+  const h = Math.floor(dec);
+  const m = Math.round((dec - h) * 60);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function grigliaVuota() {
+  return Array.from({ length: 7 }, () => ({
+    pranzo: { aperto: false, oraApertura: FINESTRE.pranzo.aperturaDefault, turni: [] },
+    cena: { aperto: true, oraApertura: FINESTRE.cena.aperturaDefault, turni: [] },
+  }));
+}
+
+function grigliaDefault(staff, giornoChiusura = 1) {
+  const g = grigliaVuota();
+  const inCucina = staff.filter((d) => repartoDi(d.ruoloEsteso ?? d.ruolo) === 'cucina').length;
+  const chiusi = new Set([giornoChiusura]);
+  if (inCucina < 2) chiusi.add((giornoChiusura + 1) % 7);
+  const pranziWeekend = staff.length >= 5;
+  for (let dow = 0; dow < 7; dow++) {
+    const chiuso = chiusi.has(dow);
+    for (const sv of ['pranzo', 'cena']) {
+      const sp = g[dow][sv];
+      sp.aperto = !chiuso && (sv === 'cena' || (pranziWeekend && (dow === 0 || dow === 6)));
+      if (!sp.aperto) { sp.turni = []; continue; }
+      sp.turni = staff.map((d) => ({
+        idDipendente: d.id,
+        oraArrivo: sp.oraApertura - (repartoDi(d.ruoloEsteso ?? d.ruolo) === 'cucina' ? 3 : 1.5),
+      }));
+    }
+  }
+  return g;
+}
+
+function clampArrivo(sv, v) {
+  const F = FINESTRE[sv];
+  return Math.max(F.inizio, Math.min(F.fine, v));
+}
+
+/** Rapporto preparazione (1 = giusto) per cucina e sala di un servizio. */
+function prepRapporti(sp, sv, staff, copertiAttesi, complessita) {
+  if (!sp.aperto) return { cucina: 1, sala: 1 };
+  const fabCucina = Math.max(1.5, copertiAttesi / 12) * (0.85 + 0.35 * complessita);
+  const fabSala = Math.max(0.75, copertiAttesi / 25);
+  let prepCucina = 0, prepSala = 0;
+  for (const t of sp.turni) {
+    const d = staff.find((x) => x.id === t.idDipendente);
+    if (!d) continue;
+    const ore = Math.max(0, sp.oraApertura - clampArrivo(sv, t.oraArrivo));
+    if (repartoDi(d.ruoloEsteso ?? d.ruolo) === 'cucina') prepCucina += ore;
+    else prepSala += ore;
+  }
+  return {
+    cucina: fabCucina > 0 ? prepCucina / fabCucina : 1,
+    sala: fabSala > 0 ? prepSala / fabSala : 1,
+  };
+}
+
+function coloreRapporto(r) {
+  if (r < 0.7 || r > 1.3) return '#c8443c';
+  if (r < 1.0) return '#e8b84b';
+  return '#5a8c46';
+}
+
+function BarraPrep({ rapporto, label }) {
   return (
     <div className="flex items-center gap-1">
-      <span className="rm-pixel text-[7px] uppercase text-rm-wood-dark w-[52px]">{label}</span>
-      <PixelButton variant="wood" className="text-[9px] px-2 py-[2px]" onClick={() => set(value - 2)}>−</PixelButton>
-      <span className="rm-pixel text-[11px] text-rm-bg w-[28px] text-center">{value}</span>
-      <PixelButton variant="wood" className="text-[9px] px-2 py-[2px]" onClick={() => set(value + 2)}>+</PixelButton>
+      <span className="rm-pixel text-[6px] uppercase text-rm-wood-dark w-[18px]">{label}</span>
+      <SegmentedBar
+        value={Math.min(rapporto, 1.3)}
+        max={1.3}
+        segments={10}
+        color={coloreRapporto(rapporto)}
+        size={7}
+      />
     </div>
   );
 }
 
-function RigaDipendente({ d, orario, busta, onChange }) {
-  const tot = (orario.oreFeriali ?? 0) + (orario.oreFestive ?? 0);
-  const oltre = tot > FULL_TIME;
+function CellServizio({ giorno, sv, sp, staff, copertiAttesi, complessita, onChange }) {
+  const F = FINESTRE[sv];
+  const [aggiungi, setAggiungi] = useState('');
+  if (!sp) return <td className="align-top p-1" />;
+
+  const presenti = new Set(sp.turni.map((t) => t.idDipendente));
+  const disponibili = staff.filter((d) => !presenti.has(d.id));
+  const rap = prepRapporti(sp, sv, staff, copertiAttesi, complessita);
+
+  const toggleAperto = () => onChange({ ...sp, aperto: !sp.aperto, turni: !sp.aperto ? [] : sp.turni });
+  const setApertura = (v) => onChange({ ...sp, oraApertura: v });
+  const setArrivo = (idDipendente, oraArrivo) =>
+    onChange({ ...sp, turni: sp.turni.map((t) => (t.idDipendente === idDipendente ? { ...t, oraArrivo } : t)) });
+  const rimuovi = (idDipendente) =>
+    onChange({ ...sp, turni: sp.turni.filter((t) => t.idDipendente !== idDipendente) });
+  const aggiungiPersona = () => {
+    if (!aggiungi) return;
+    const d = staff.find((x) => x.id === aggiungi);
+    if (!d) return;
+    const arrivo = sp.oraApertura - (repartoDi(d.ruoloEsteso ?? d.ruolo) === 'cucina' ? 3 : 1.5);
+    onChange({ ...sp, turni: [...sp.turni, { idDipendente: aggiungi, oraArrivo: clampArrivo(sv, arrivo) }] });
+    setAggiungi('');
+  };
+
   return (
-    <div className="rm-card rm-no-radius p-2 rm-shadow mb-2">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div>
-          <span className="rm-pixel text-[11px] text-rm-bg">{d.nome}</span>
-          <span className="rm-text text-[15px] text-rm-wood-dark ml-2">
-            {RUOLI_ESTESI[d.ruoloEsteso ?? d.ruolo] ?? d.ruolo}
-          </span>
-          {!d.inRegola && <Chip color="bg-rm-red" className="ml-2">IN NERO</Chip>}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`rm-pixel text-[11px] ${oltre ? 'text-rm-red' : 'text-rm-bg'}`}>{tot}h</span>
-          {oltre && <Chip color="bg-rm-red">STRAORDINARIO</Chip>}
-        </div>
-      </div>
+    <td className="align-top p-1 w-[150px] min-w-[150px]">
+      <div className={`rm-card rm-no-radius p-1 ${sp.aperto ? '' : 'opacity-60'}`}>
+        <button
+          onClick={toggleAperto}
+          className={`rm-btn ${sp.aperto ? 'rm-btn-green' : 'rm-btn-wood'} text-[7px] w-full py-1`}
+        >
+          {sp.aperto ? 'APERTO' : 'CHIUSO'}
+        </button>
 
-      <div className="flex flex-wrap gap-3 mt-2">
-        <StepperOre label="Feriali" value={orario.oreFeriali ?? 0} onChange={(v) => onChange({ ...orario, oreFeriali: v })} />
-        <StepperOre label="Festivi" value={orario.oreFestive ?? 0} onChange={(v) => onChange({ ...orario, oreFestive: v })} />
-      </div>
-
-      {busta && (
-        <div className="grid grid-cols-3 gap-1 mt-2">
-          <div>
-            <div className="rm-pixel text-[6px] uppercase text-rm-wood-dark">Costo azienda</div>
-            <div className="rm-pixel text-[10px] text-rm-bg">{money(busta.costoAzienda)}</div>
-          </div>
-          <div>
-            <div className="rm-pixel text-[6px] uppercase text-rm-wood-dark">Lordo</div>
-            <div className="rm-pixel text-[10px] text-rm-bg">{money(busta.lordo)}</div>
-          </div>
-          <div>
-            <div className="rm-pixel text-[6px] uppercase text-rm-wood-dark">Netto</div>
-            <div className="rm-pixel text-[10px] text-rm-bg">
-              {money(busta.nettoInBusta)}
-              {busta.cashNero > 0 && <span className="text-rm-red"> +{money(busta.cashNero)}</span>}
+        {sp.aperto && (
+          <>
+            <div className="mt-1">
+              <div className="rm-pixel text-[6px] uppercase text-rm-wood-dark">Apertura</div>
+              <div className="flex items-center gap-1">
+                <input
+                  type="range"
+                  min={F.aperturaMin}
+                  max={F.aperturaMax}
+                  step={0.25}
+                  value={sp.oraApertura}
+                  onChange={(e) => setApertura(parseFloat(e.target.value))}
+                  className="w-full"
+                />
+                <span className="rm-pixel text-[8px] text-rm-bg w-[34px]">{fmtTime(sp.oraApertura)}</span>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
-    </div>
+
+            <div className="mt-1 space-y-1">
+              {sp.turni.map((t) => {
+                const d = staff.find((x) => x.id === t.idDipendente);
+                if (!d) return null;
+                return (
+                  <div key={t.idDipendente} className="rm-card-dark rm-no-radius p-1">
+                    <div className="flex items-center justify-between">
+                      <span className="rm-pixel text-[7px] text-rm-cream truncate">{d.nome}</span>
+                      <button onClick={() => rimuovi(t.idDipendente)} className="rm-pixel text-[8px] text-rm-red">✕</button>
+                    </div>
+                    <div className="flex items-center gap-1 mt-1">
+                      <input
+                        type="range"
+                        min={F.inizio}
+                        max={F.fine}
+                        step={0.25}
+                        value={clampArrivo(sv, t.oraArrivo)}
+                        onChange={(e) => setArrivo(t.idDipendente, parseFloat(e.target.value))}
+                        className="w-full"
+                      />
+                      <span className="rm-pixel text-[7px] text-rm-gold w-[34px]">{fmtTime(t.oraArrivo)}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {disponibili.length > 0 && (
+              <div className="mt-1 flex gap-1">
+                <select
+                  value={aggiungi}
+                  onChange={(e) => setAggiungi(e.target.value)}
+                  className="rm-input text-[12px] py-[2px] flex-1"
+                >
+                  <option value="">+ persona…</option>
+                  {disponibili.map((d) => (
+                    <option key={d.id} value={d.id}>{d.nome}</option>
+                  ))}
+                </select>
+                <PixelButton variant="wood" className="text-[8px] px-2 py-[2px]" onClick={aggiungiPersona}>+</PixelButton>
+              </div>
+            )}
+
+            <div className="mt-1 space-y-[2px]">
+              <BarraPrep rapporto={rap.cucina} label="CUC" />
+              <BarraPrep rapporto={rap.sala} label="SAL" />
+            </div>
+          </>
+        )}
+      </div>
+    </td>
   );
 }
 
 export default function Turni({ stato, report, decisioni, setDecisioni }) {
   const staff = stato?.staff ?? [];
-  const orari = { ...(stato?.orari ?? {}), ...(decisioni.orari ?? {}) };
+  const statoGriglia = stato?.griglia ?? grigliaVuota();
+  const griglia = decisioni?.griglia ?? statoGriglia;
+  const oreSett = report?.oreSettimanali ?? {};
   const buste = report?.buste ?? {};
-  const fab = report?.fabbisogno;
+  const violazioni = report?.violazioniTurni ?? [];
+  const bloccanti = violazioni.filter((v) => v.bloccante);
 
-  const oreTotali = useMemo(
-    () => staff.reduce((s, d) => s + ((orari[d.id]?.oreFeriali ?? 0) + (orari[d.id]?.oreFestive ?? 0)), 0),
-    [staff, orari],
-  );
-  const costoTotale = useMemo(
+  const copertiAttesi = Math.round((stato?.locale?.postiASedere ?? 40) * (stato?.locale?.turniMax ?? 2.2));
+  const complessita = Math.min(1, (stato?.menu?.length ?? 0) / 18);
+
+  const costoMensile = useMemo(
     () => Object.values(buste).reduce((s, b) => s + (b.costoAzienda ?? 0), 0),
     [buste],
   );
+  const costoSettimanale = costoMensile / SETTIMANE_MESE;
 
-  const setOrario = (id, o) =>
-    setDecisioni((p) => ({ ...p, orari: { ...(p.orari ?? {}), [id]: o } }));
+  const setGriglia = (nuova) => setDecisioni((p) => ({ ...p, griglia: nuova }));
+  const setCell = (dow, sv, cell) => {
+    const nuova = griglia.map((g, i) => (i === dow ? { ...g, [sv]: cell } : g));
+    setGriglia(nuova);
+  };
 
-  const sotto = fab?.stato === 'sotto_organico';
-  const sopra = fab?.stato === 'sovradimensionato';
+  const copiaSuSettimana = (dow) => {
+    const modello = griglia[dow];
+    const nuova = griglia.map((g, i) => (i === dow ? g : {
+      pranzo: JSON.parse(JSON.stringify(modello.pranzo)),
+      cena: JSON.parse(JSON.stringify(modello.cena)),
+    }));
+    setGriglia(nuova);
+  };
+
+  const copiaDaScorsa = () => setGriglia(JSON.parse(JSON.stringify(statoGriglia)));
+  const ripristinaDefault = () => setGriglia(grigliaDefault(staff, stato?.locale?.giornoChiusura ?? 1));
 
   return (
     <div className="space-y-3">
-      <PixelPanel title="Organico della settimana" icon="cal">
-        <div className="grid grid-cols-3 gap-2">
-          <Stat label="Ore a settimana" value={`${oreTotali}h`} icon="clock" />
-          <Stat label="Costo personale" value={money(costoTotale)} icon="coin" />
-          <Stat
-            label="Copertura"
-            value={sotto ? 'SOTTO' : sopra ? 'TROPPO' : 'OK'}
-            icon="fork"
-            accent={sotto ? 'text-rm-red' : sopra ? 'text-rm-gold' : 'text-rm-green'}
-          />
+      <PixelPanel title="Settimana" icon="cal">
+        <div className="grid grid-cols-2 gap-2">
+          <Stat label="Costo/sett." value={money(costoSettimanale)} icon="coin" />
+          <Stat label="Bloccanti" value={bloccanti.length} icon="stamp" accent={bloccanti.length ? 'text-rm-red' : 'text-rm-green'} />
         </div>
 
-        {fab && (
-          <div className="rm-card-dark rm-no-radius p-2 mt-2">
-            <div className="flex items-center justify-between mb-1">
-              <span className="rm-pixel text-[8px] uppercase text-rm-cream/60">Coperti/settimana</span>
-              <span className="rm-pixel text-[10px] text-rm-cream">
-                {fab.capacita} regge · {fab.copertiPrevisti} previsti
-              </span>
-            </div>
-            <SegmentedBar
-              value={Math.min(fab.capacita, fab.copertiPrevisti)}
-              max={Math.max(fab.capacita, fab.copertiPrevisti, 1)}
-              segments={20}
-              color={sotto ? '#c8443c' : '#5a8c46'}
-              size={10}
-            />
-            {sotto && (
-              <div className="rm-text text-[16px] text-rm-red mt-2">
-                Sotto organico: mancano circa {fab.oreMancantiCucina}h in cucina e {fab.oreMancantiSala}h in sala.
-                Aggiungi ore, assumi, o accetta di respingere clienti.
-              </div>
-            )}
-            {sopra && (
-              <div className="rm-text text-[16px] text-rm-gold mt-2">
-                Organico sovradimensionato per la domanda prevista: stai pagando ore che non servono.
-              </div>
-            )}
-          </div>
-        )}
-      </PixelPanel>
-
-      <PixelPanel title="In caso di sovraccarico" icon="stamp">
-        <div className="flex gap-2">
-          {[
-            { v: 'straordinari', l: 'STRAORDINARI', d: 'Copri i clienti pagando la maggiorazione. La squadra si stanca.' },
-            { v: 'respingi', l: 'RESPINGI', d: 'Nessun costo extra, ma clienti a casa e recensioni.' },
-          ].map((o) => {
-            const attivo = (decisioni.politicaSovraccarico ?? 'straordinari') === o.v;
+        <div className="mt-2 space-y-1">
+          <div className="rm-pixel text-[7px] uppercase text-rm-wood-dark">Ore settimanali a persona</div>
+          {staff.length === 0 && (
+            <div className="rm-text text-[15px] text-rm-cream/60">Nessun dipendente.</div>
+          )}
+          {staff.map((d) => {
+            const ore = oreSett[d.id] ?? 0;
+            const oltre = ore > 40;
             return (
-              <button
-                key={o.v}
-                onClick={() => setDecisioni((p) => ({ ...p, politicaSovraccarico: o.v }))}
-                className={`flex-1 rm-btn ${attivo ? 'rm-btn-green' : 'rm-btn-wood'} text-[9px] py-2`}
-              >
-                {o.l}
-              </button>
+              <div key={d.id} className="flex items-center justify-between rm-card rm-no-radius px-2 py-1">
+                <span className="rm-pixel text-[8px] text-rm-bg truncate">{d.nome}</span>
+                <span className={`rm-pixel text-[9px] ${oltre ? 'text-rm-red' : 'text-rm-bg'}`}>{ore.toFixed(1)}h</span>
+              </div>
             );
           })}
         </div>
-        <div className="rm-text text-[15px] text-rm-cream/70 mt-2">
-          {(decisioni.politicaSovraccarico ?? 'straordinari') === 'straordinari'
-            ? 'Copri i clienti pagando la maggiorazione. La squadra si stanca.'
-            : 'Nessun costo extra, ma clienti a casa e recensioni.'}
+
+        {violazioni.length > 0 && (
+          <div className="mt-2 rm-card-dark rm-no-radius p-2 space-y-1">
+            <div className="rm-pixel text-[7px] uppercase text-rm-cream/60">Violazioni turni</div>
+            {violazioni.slice(0, 6).map((v, i) => (
+              <div key={i} className="rm-text text-[15px] flex gap-1">
+                <span className={v.bloccante ? 'text-rm-red' : 'text-rm-gold'}>{v.bloccante ? '⛔' : '⚠'}</span>
+                <span className="text-rm-cream/80">{v.messaggio}</span>
+              </div>
+            ))}
+            {bloccanti.length > 0 && (
+              <div className="rm-pixel text-[8px] text-rm-red mt-1">Risolvi le bloccanti prima di avanzare.</div>
+            )}
+          </div>
+        )}
+      </PixelPanel>
+
+      <PixelPanel title="Griglia settimanale" icon="cal">
+        <div className="flex flex-wrap gap-1 mb-2">
+          <PixelButton variant="wood" className="text-[8px] px-2 py-1" onClick={ripristinaDefault}>Default</PixelButton>
+          <PixelButton variant="wood" className="text-[8px] px-2 py-1" onClick={copiaDaScorsa}>Da settimana scorsa</PixelButton>
+        </div>
+        <div className="rm-text text-[14px] text-rm-cream/60 mb-2">
+          Modifica un giorno, poi copialo su tutta la settimana.
+        </div>
+
+        <div className="overflow-x-auto rm-scroll">
+          <table className="border-separate" style={{ minWidth: 7 * 150 }}>
+            <thead>
+              <tr>
+                {GIORNI.map((g, i) => (
+                  <th key={g} className="rm-pixel text-[8px] text-rm-cream p-1 w-[150px] min-w-[150px] text-left">
+                    {g}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colSpan={7} className="rm-pixel text-[7px] uppercase text-rm-gold px-1 py-1">PRANZO</td>
+              </tr>
+              <tr>
+                {GIORNI.map((_, dow) => (
+                  <CellServizio
+                    key={`p${dow}`}
+                    giorno={dow}
+                    sv="pranzo"
+                    sp={griglia[dow]?.pranzo}
+                    staff={staff}
+                    copertiAttesi={copertiAttesi}
+                    complessita={complessita}
+                    onChange={(cell) => setCell(dow, 'pranzo', cell)}
+                  />
+                ))}
+              </tr>
+              <tr>
+                <td colSpan={7} className="rm-pixel text-[7px] uppercase text-rm-gold px-1 py-1">CENA</td>
+              </tr>
+              <tr>
+                {GIORNI.map((_, dow) => (
+                  <CellServizio
+                    key={`c${dow}`}
+                    giorno={dow}
+                    sv="cena"
+                    sp={griglia[dow]?.cena}
+                    staff={staff}
+                    copertiAttesi={copertiAttesi}
+                    complessita={complessita}
+                    onChange={(cell) => setCell(dow, 'cena', cell)}
+                  />
+                ))}
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div className="mt-2 flex flex-wrap gap-1">
+          {GIORNI.map((g, dow) => (
+            <PixelButton
+              key={g}
+              variant="blue"
+              className="text-[7px] px-2 py-1"
+              onClick={() => copiaSuSettimana(dow)}
+            >
+              {g} → settimana
+            </PixelButton>
+          ))}
         </div>
       </PixelPanel>
 
-      <div>
-        <SectionTitle icon="user">Monte ore per persona</SectionTitle>
-        {staff.length === 0 && (
-          <div className="rm-card-dark rm-no-radius p-4 rm-text text-[17px] text-rm-cream/60 text-center">
-            Nessun dipendente. Vai su Assunzioni.
-          </div>
-        )}
-        {staff.map((d) => (
-          <RigaDipendente
-            key={d.id}
-            d={d}
-            orario={orari[d.id] ?? { oreFeriali: 24, oreFestive: 16 }}
-            busta={buste[d.id]}
-            onChange={(o) => setOrario(d.id, o)}
-          />
-        ))}
-      </div>
-
-      <div className="rm-text text-[15px] text-rm-cream/60">
-        Le ore contrattuali non sono tutte ore di servizio: prep, carico merce e
-        pulizie ne assorbono una parte. Le modifiche valgono dal prossimo mese.
+      <div className="rm-text text-[14px] text-rm-cream/60">
+        Arrivi troppo presto = ore pagate a vuoto; troppo tardi = sala o cucina non pronte.
+        Le barre: verde 1.0–1.3, giallo 0.7–1.0, rosso fuori.
       </div>
     </div>
   );
