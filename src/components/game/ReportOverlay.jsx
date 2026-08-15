@@ -40,9 +40,12 @@ function GameOverView({ report, onChiudi }) {
 }
 
 /** Overlay di fine turno: report del mese, eventuale chiusura d'anno, game over. */
-export default function ReportOverlay({ report, onClose, onGameOverChiudi, nomeRistorante }) {
+export default function ReportOverlay({ report, onClose, onGameOverChiudi, nomeRistorante, stato }) {
   if (!report) return null;
   const r = { ...report, nomeRistrante: nomeRistorante };
+  // Gli accessi di routine (🚓) non sono ispezioni: restano nel feed normale, non qui.
+  const eventiOverlay = (report.eventi ?? []).filter((e) => !e.startsWith('🚓'));
+  const violCorr = stato?.controlli?.violazioniCorrispettivi?.length ?? 0;
 
   return (
     <div className="fixed inset-0 z-50 bg-rm-bg2/80 flex items-start sm:items-center justify-center p-2 overflow-y-auto rm-scroll">
@@ -78,6 +81,12 @@ export default function ReportOverlay({ report, onClose, onGameOverChiudi, nomeR
                     {report.ispezione.sospensioneGiorni > 0 && <Chip color="bg-rm-red">Sospensione {report.ispezione.sospensioneGiorni}g</Chip>}
                     {report.ispezione.durcIrregolareMesi > 0 && <Chip color="bg-rm-red">DURC irreg. {report.ispezione.durcIrregolareMesi} mesi</Chip>}
                   </div>
+                  {report.ispezione.ente === 'finanza' && (
+                    <div className="mt-2 rm-card rm-no-radius p-1">
+                      <div className="rm-pixel text-[8px] text-rm-bg">Corrispettivi: violazione {violCorr}/4</div>
+                      <div className="rm-text text-[14px] text-rm-wood-dark">Alla quarta in cinque anni scatta la chiusura.</div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -92,7 +101,7 @@ export default function ReportOverlay({ report, onClose, onGameOverChiudi, nomeR
 
               <div>
                 <div className="rm-pixel text-[10px] text-rm-cream mb-1">EVENTI DEL MESE</div>
-                <EventFeed eventi={report.eventi} />
+                <EventFeed eventi={eventiOverlay} />
               </div>
 
               <PixelButton variant="green" full onClick={onClose}>Continua</PixelButton>

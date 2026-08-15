@@ -2,6 +2,7 @@ import React from 'react';
 import { SegmentedBar, MoraleFace, Chip, PixelButton } from '@/components/game/ui';
 import { ruoloLabel, livelloLabel, repartoDi, lordoMensile } from '@/lib/gameData';
 import { money } from '@/lib/partita';
+import { copertiEffettivi } from '../../../base44/shared/engine/turni';
 
 function Attr({ label, value }) {
   const color = value >= 12 ? '#5a8c46' : value >= 8 ? '#e8b84b' : '#c8443c';
@@ -23,6 +24,7 @@ export default function StaffCard({
   const d = dipendente;
   const reparto = repartoDi(d.ruolo);
   const lordo = lordoMensile(d.ruolo, d.superminimo);
+  const coperti = Math.round(copertiEffettivi(d.ruolo, d.attributi?.velocita ?? 10, d.morale ?? 50));
 
   return (
     <div className="rm-card rm-no-radius rm-shadow p-2">
@@ -31,6 +33,9 @@ export default function StaffCard({
           <div className="rm-pixel text-[12px] text-rm-bg">{d.nome}</div>
           <div className="rm-text text-[16px] text-rm-wood-dark leading-none">
             {ruoloLabel(d.ruolo)} · {reparto}
+          </div>
+          <div className="rm-text text-[14px] text-rm-wood-dark leading-none mt-[2px]">
+            copre <span className="rm-pixel text-[9px] text-rm-bg">{coperti}</span> coperti a servizio
           </div>
         </div>
         <div className="flex flex-col items-end gap-1">

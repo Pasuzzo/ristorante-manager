@@ -217,6 +217,7 @@ export default function Partita() {
       {showReport && (
         <ReportOverlay
           report={report}
+          stato={stato}
           nomeRistorante={partita.nome}
           onClose={() => setShowReport(false)}
           onGameOverChiudi={() => navigate('/')}
