@@ -35,6 +35,8 @@ export interface StatoControlli {
   corrispettiviContestati: number;
   /** accessi di routine subiti: servono solo a creare tensione */
   accessiRoutine: number;
+  /** mesi in cui i contributi non sono stati versati per mancanza di cassa */
+  versamentiInRitardo: number;
 }
 
 export function nuovoStatoControlli(): StatoControlli {
@@ -42,6 +44,7 @@ export function nuovoStatoControlli(): StatoControlli {
     durcIrregolare: false, durcMesiResidui: 0, rate: [],
     sospensioneGiorni: 0, attenzioneResidua: 0, controlliSubiti: 0,
     violazioniCorrispettivi: [], corrispettiviContestati: 0, accessiRoutine: 0,
+    versamentiInRitardo: 0,
   };
 }
 
@@ -333,4 +336,52 @@ export function avanzaControlli(st: StatoControlli): { rataMese: number; eventi:
   const giorniPersi = st.sospensioneGiorni;
   st.sospensioneGiorni = 0;
   return { rataMese, eventi: giorniPersi ? [...eventi, `🚫 Locale chiuso ${giorniPersi} giorni per provvedimento.`] : eventi };
+}
+
+
+// ─────────────────────────────────────────────── DURC
+
+export const DURC = {
+  /** ritardi nei versamenti oltre i quali il certificato non è più regolare */
+  ritardiPerIrregolarita: 2,
+  /** mesi di irregolarità dopo l'ultimo ritardo */
+  mesiIrregolarita: 4,
+  /** soglia di scoperto sotto cui si considera saltato il versamento */
+  sogliaSaltoVersamento: 0,
+} as const;
+
+/**
+ * Il DURC si aggiorna ogni mese: se non riesci a versare i contributi
+ * perché la cassa non c'è, il certificato si sporca. È il canale
+ * "silenzioso" — non serve un'ispezione per perderlo, basta non pagare.
+ */
+export function aggiornaDurc(
+  st: StatoControlli,
+  cassaDopoVersamenti: number,
+  f24DelMese: number
+): { eventi: string[]; aRischio: boolean } {
+  const eventi: string[] = [];
+  const saltato = f24DelMese > 0 && cassaDopoVersamenti < DURC.sogliaSaltoVersamento;
+
+  if (saltato) {
+    st.versamentiInRitardo++;
+    if (st.versamentiInRitardo === DURC.ritardiPerIrregolarita - 1) {
+      eventi.push("📄 Un versamento contributivo è andato in ritardo. Ancora uno e il DURC non sarà più regolare: " +
+        "niente bandi, niente sgravi.");
+    }
+    if (st.versamentiInRitardo >= DURC.ritardiPerIrregolarita && !st.durcIrregolare) {
+      st.durcIrregolare = true;
+      st.durcMesiResidui = Math.max(st.durcMesiResidui, DURC.mesiIrregolarita);
+      eventi.push("📄 DURC IRREGOLARE per contributi non versati. Non è servita un'ispezione: " +
+        "è bastato non pagare. Finché non rientri sei fuori da bandi e sgravi.");
+    }
+  } else if (st.versamentiInRitardo > 0 && f24DelMese > 0) {
+    // hai ripreso a versare: il conto si riduce
+    st.versamentiInRitardo = Math.max(0, st.versamentiInRitardo - 1);
+    if (st.versamentiInRitardo === 0 && st.durcIrregolare && st.durcMesiResidui <= 1) {
+      eventi.push("📄 Contributi rientrati: alla prossima verifica il DURC tornerà regolare.");
+    }
+  }
+
+  return { eventi, aRischio: st.versamentiInRitardo >= DURC.ritardiPerIrregolarita - 1 };
 }

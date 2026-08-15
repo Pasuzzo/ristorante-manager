@@ -78,6 +78,10 @@ export interface Bando {
 // ─────────────────────────────────────────────── Profilo del richiedente
 
 export interface ProfiloRichiedente {
+  /** spesa effettivamente documentata con fattura negli ultimi 12 mesi.
+   *  È su questa che si calcola il contributo: quello che paghi in nero
+   *  non ha carte da allegare e non entra nella rendicontazione. */
+  investimentoDocumentato?: number;
   etaTitolare: number;
   titolareFemminile: boolean;
   anniAttivita: number;
@@ -128,7 +132,24 @@ export function verificaEleggibilita(b: Bando, p: ProfiloRichiedente): EsitoEleg
   if (r.escludeSanzioniLavoro && p.haSanzioniLavoro) no.push("Escluso: hai precedenti sanzioni per lavoro irregolare.");
   if (b.regione && b.regione !== p.regione) no.push(`Bando riservato a: ${b.regione}.`);
 
-  const contributoStimato = Math.min(b.importoMax, p.investimentoPrevisto * b.quotaCopertura);
+  // Il contributo copre solo la spesa rendicontabile: se dichiari più di
+  // quanto hai fatturato, la differenza non è ammessa a contributo.
+  const documentato = p.investimentoDocumentato ?? p.investimentoPrevisto;
+  const ammesso = Math.min(p.investimentoPrevisto, documentato);
+  const contributoStimato = Math.min(b.importoMax, ammesso * b.quotaCopertura);
+
+  if (documentato < p.investimentoPrevisto * 0.95) {
+    const perso = Math.round((p.investimentoPrevisto - ammesso) * b.quotaCopertura);
+    avvisi.push(
+      `Solo ${eur(documentato)} del tuo investimento è documentato con fattura: ` +
+      `il resto non è rendicontabile e ti costa ${eur(perso)} di contributo.`
+    );
+  }
+  // e se il minimo si calcola sul documentato, il nero può escluderti del tutto
+  if (r.investimentoMin !== undefined && documentato < r.investimentoMin && p.investimentoPrevisto >= r.investimentoMin) {
+    no.push(`Investimento documentato insufficiente: servono ${eur(r.investimentoMin)} con fattura, ne hai ${eur(documentato)}.`);
+  }
+
   return { bando: b, ammissibile: no.length === 0, motiviEsclusione: no, avvisi, contributoStimato };
 }
 

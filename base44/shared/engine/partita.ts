@@ -60,7 +60,11 @@ import {
 import {
   ConfigPrenotazioni, RigaSettimana, settimanaDaPianificare, presenzeEffettive, chiamaExtra,
 } from "./prenotazioni.ts";
-import { SANZIONI, accessoRoutine, registraViolazioneCorrispettivi } from "./controlli.ts";
+import { SANZIONI, accessoRoutine, registraViolazioneCorrispettivi, aggiornaDurc } from "./controlli.ts";
+import {
+  Bando, Domanda, ProfiloRichiedente, CATALOGO_ESEMPIO,
+  bandiDisponibili, presentaDomanda, avanzaDomande,
+} from "./bandi.ts";
 import {
   StatoReparti, Sforamento, RispostaSforamento, nuovoStatoReparti,
   aggiornaAffidabilita, valutaSforamento, effettoBudgetStretto, EFFETTI_RISPOSTA,
@@ -118,6 +122,15 @@ export interface StatoPartita {
   griglia: Griglia;
   /** il locale accetta caparre sui gruppi */
   caparraGruppi: boolean;
+  /** spesa in conto capitale DOCUMENTATA (fatture in chiaro), per mese
+   *  assoluto: è l'unica che un bando può finanziare */
+  investimentiDocumentati: Array<{ mese: number; importo: number }>;
+  /** domande di contributo presentate: in istruttoria, accolte, in erogazione */
+  domandeBandi: Domanda[];
+  /** assunzioni nuove nell'anno: requisito di alcuni bandi */
+  nuoveAssunzioniAnno: number;
+  /** spesa in investimenti documentata con fattura negli ultimi 12 mesi */
+  investimentoDocumentato: number;
   reparti: StatoReparti;
   controlli: StatoControlli;
   /** eventi del mese in corso, generati proceduralmente */
@@ -179,6 +192,13 @@ export interface DecisioniMese {
   griglia?: Griglia;
   /** caparra sui gruppi: meno no-show, qualche cliente in meno */
   caparraGruppi?: boolean;
+  /** id dei bandi per cui presentare domanda questo mese */
+  domandeBandi?: string[];
+  /** investimento dichiarato nella domanda: viene comunque limitato a
+   *  quello che puoi documentare con fatture */
+  investimentoDichiarato?: number;
+  /** mettersi in regola coi contributi per sbloccare il DURC prima */
+  regolarizzaDurc?: boolean;
   /** in caso di sovraccarico: straordinari (paghi la maggiorazione) o clienti respinti */
   politicaSovraccarico?: "straordinari" | "respingi";
   /** quote di incassi/acquisti non dichiarati e politica del fuori busta */
@@ -229,6 +249,10 @@ export interface ReportMese {
   gameOver: boolean;
   /** stato dell'economia questo mese, per la dashboard */
   macro: { inflazione: number; inflazioneAlimentare: number; fiducia: number; salari: number; shock?: string };
+  /** bandi aperti questo mese, con eleggibilità già valutata */
+  bandi: Array<{ id: string; titolo: string; ente: string; ammissibile: boolean; motiviEsclusione: string[]; contributoStimato: number; costoConsulenza: number }>;
+  /** pratiche in corso */
+  domandeBandi: Domanda[];
   /** i sette giorni da pianificare quando metti in pausa */
   settimana: RigaSettimana[];
   /** violazioni della griglia: 11 ore, riposo settimanale, straordinari */
@@ -249,8 +273,13 @@ export interface ReportMese {
   ispezione?: { ente: Ente; titolo: string; trovato: string[]; sanzione: number; sospensioneGiorni: number; durcIrregolareMesi: number };
   /** affidabilità per dipendente */
   affidabilita: Record<string, number>;
-  /** DURC irregolare: niente bandi */
+  /** DURC irregolare: niente bandi. `durcMesiResidui` dice quanto manca,
+   *  `costoRegolarizzazione` quanto costa uscirne subito. */
   durcIrregolare: boolean;
+  durcMesiResidui: number;
+  costoRegolarizzazione: number;
+  /** spesa documentata negli ultimi 12 mesi: il tetto dei contributi */
+  investimentoDocumentabile: number;
   /** registro dichiarato/reale e cassa nera */
   nero: { cassaNera: number; quotaNeraAnno: number; incoerenza: number; rischio: number };
   /** assenze del mese: id -> giorni */
@@ -378,12 +407,12 @@ export function nuovaPartita(c: ConfigNuovaPartita, cfg: FiscalConfig = FISCAL_2
       postiASedere: c.annuncio.postiStimati,
       turniMax: 2.2,
       giornoChiusura: 1,
-      scontrinoMedioBase: 26,
+      scontrinoMedioBase: 34,
       tipoLocalita: c.annuncio.posizioneCommerciale === "ottima" ? "riviera"
                   : c.annuncio.posizioneCommerciale === "normale" ? "citta" : "paese",
       listino: 1,
       elasticitaPrezzo: -1.2,
-      tassoBase: 0.38 * (c.annuncio.passaggio ?? 1),
+      tassoBase: 0.46 * (c.annuncio.passaggio ?? 1),
       indicePrezziMenu: 1,
     },
     staff,
@@ -416,6 +445,10 @@ export function nuovaPartita(c: ConfigNuovaPartita, cfg: FiscalConfig = FISCAL_2
       1,
     ),
     caparraGruppi: false,
+    investimentiDocumentati: [],
+    domandeBandi: [],
+    nuoveAssunzioniAnno: 0,
+    investimentoDocumentato: 0,
     reparti: nuovoStatoReparti(),
     controlli: nuovoStatoControlli(),
     eventiLocali: [],
@@ -479,14 +512,21 @@ export function avanzaMese(
       g.cena.turni.some((t) => t.idDipendente === d.id));
     if (giaInGriglia) continue;
     const reparto = repartoDi(d.ruoloEsteso ?? d.ruolo);
-    const riposo = (s.locale.giornoChiusura ?? 1) === 0 ? 3 : 0; // secondo giorno libero
+    // entra nei servizi meno coperti del suo reparto, non in tutti
+    const conteggio: Array<{ dow: number; sv: Servizio; n: number }> = [];
     for (let dow = 0; dow < 7; dow++) {
-      if (dow === riposo) continue;
       for (const sv of ["pranzo", "cena"] as Servizio[]) {
         const sp = s.griglia[dow][sv];
         if (!sp.aperto) continue;
-        sp.turni.push({ idDipendente: d.id, oraArrivo: sp.oraApertura - (reparto === "cucina" ? 3 : 1.5) });
+        conteggio.push({ dow, sv, n: sp.turni.length });
       }
+    }
+    conteggio.sort((a, b) => a.n - b.n);
+    for (const c of conteggio.slice(0, Math.ceil(conteggio.length * 0.6))) {
+      s.griglia[c.dow][c.sv].turni.push({
+        idDipendente: d.id,
+        oraArrivo: s.griglia[c.dow][c.sv].oraApertura - (reparto === "cucina" ? 3 : 1.5),
+      });
     }
   }
   if (!s.assenze) s.assenze = nuovoStatoAssenze();
@@ -496,6 +536,9 @@ export function avanzaMese(
   if (!s.reparti) s.reparti = nuovoStatoReparti();
   if (!s.controlli) s.controlli = nuovoStatoControlli();
   if (!s.eventiLocali) s.eventiLocali = [];
+  if (!s.domandeBandi) s.domandeBandi = [];
+  if (s.nuoveAssunzioniAnno === undefined) s.nuoveAssunzioniAnno = 0;
+  if (s.investimentoDocumentato === undefined) s.investimentoDocumentato = 0;
   if (dec.reparti) {
     const r = dec.reparti;
     if (r.budgetCucina !== undefined) s.reparti.budgetCucina = Math.max(0, r.budgetCucina);
@@ -570,6 +613,7 @@ export function avanzaMese(
     eventi.push(esito.accettata ? `🤝 ${esito.motivo}` : `❌ ${esito.motivo}`);
     if (esito.accettata) {
       s.staff.push(assumiCandidato(c, off, esito) as unknown as DipendenteEsteso);
+      s.nuoveAssunzioniAnno++;
       s.mercato = s.mercato.filter((x) => x.id !== c.id);
     }
   }
@@ -592,6 +636,8 @@ export function avanzaMese(
     } else if (d) d.superminimo = au.superminimo;
   }
   if (dec.ristrutturazione && dec.ristrutturazione > 0) {
+    // la quota pagata in nero non produce fattura e non è rendicontabile
+    s.investimentoDocumentato += dec.ristrutturazione * (1 - (s.politicheNero?.quotaAcquisti ?? 0));
     s.scelte.condizioneLocale = Math.min(100, s.scelte.condizioneLocale + dec.ristrutturazione / 250);
     eventi.push(`🔨 Ristrutturazione: ${fmt(dec.ristrutturazione)} → locale a ${Math.round(s.scelte.condizioneLocale)}/100`);
   }
@@ -661,13 +707,28 @@ export function avanzaMese(
   let capacitaMensile = 0, oreSprecateMese = 0, moltGradServizi = 0, nServizi = 0;
   const oreMeseDaGriglia: Record<string, number> = {};
 
+  // Domanda dei servizi chiusi: una parte si sposta su quelli aperti,
+  // il resto è persa. Chiudere a pranzo non azzera i clienti del giorno.
+  const QUOTA_RECUPERO = 0.38;
+  let domandaChiusa = 0, serviziAperti = 0;
+  for (const g of r.giorni) {
+    const pian = s.griglia[g.dow];
+    for (const sv of ["pranzo", "cena"] as Servizio[]) {
+      const quota = sv === "pranzo" ? quotaPranzo : 1 - quotaPranzo;
+      if (g.chiuso || !pian[sv].aperto) domandaChiusa += g.copertiDomanda * quota;
+      else serviziAperti++;
+    }
+  }
+  const recuperoPerServizio = serviziAperti > 0
+    ? (domandaChiusa * QUOTA_RECUPERO) / serviziAperti : 0;
+
   for (const g of r.giorni) {
     if (g.chiuso) continue;
     const pian = s.griglia[g.dow];
     for (const sv of ["pranzo", "cena"] as Servizio[]) {
       const sp = pian[sv];
       if (!sp.aperto) continue;
-      const attesi = g.copertiDomanda * (sv === "pranzo" ? quotaPranzo : 1 - quotaPranzo);
+      const attesi = g.copertiDomanda * (sv === "pranzo" ? quotaPranzo : 1 - quotaPranzo) + recuperoPerServizio;
       const es = valutaServizio(sp, sv, inTurno, attesi, {
         complessitaMenu: complessita,
         haDehors: (s.scelte.servizi ?? []).includes("dehors" as any),
@@ -693,7 +754,11 @@ export function avanzaMese(
 
   const capOre = capacitaSquadra(lavoratori, Math.round(r.copertiTotali / ORARIO.settimanePerMese));
   // ~4,33 settimane al mese; il titolare che copre un ruolo è già dentro `operativi`
-  if (grigliaAttiva) perf.capacitaCoperti = capacitaMensile;
+  if (grigliaAttiva) {
+    perf.capacitaCoperti = capacitaMensile;
+    // la domanda che il locale può davvero intercettare, dati i servizi aperti
+    r.copertiTotali = Math.round(r.copertiTotali - domandaChiusa * (1 - QUOTA_RECUPERO));
+  }
   else if (lavoratori.length) perf.capacitaCoperti = capOre.copertiSettimana * ORARIO.settimanePerMese;
   eventi.push(...capOre.avvisi);
   perf.cucina = Math.min(1, perf.cucina * fattoreEsecuzione); // il menu giusto (o sbagliato) per la brigata
@@ -1045,6 +1110,9 @@ export function avanzaMese(
     s.controlli.sospensioneGiorni += viol.sospensioneGiorni;
   }
 
+  const esitoDurc = aggiornaDurc(s.controlli, s.tesoreria.saldo, s.tesoreria.f24MeseSuccessivo);
+  eventi.push(...esitoDurc.eventi);
+
   const avanz = avanzaControlli(s.controlli);
   eventi.push(...avanz.eventi);
 
@@ -1098,6 +1166,7 @@ export function avanzaMese(
     ];
     s.fiscale = { ricavi: 0, costiDeducibili: 0 };
     chiudiAnnoNero(s.nero);
+    s.nuoveAssunzioniAnno = 0;
     s.ristorante.annoAttivita++;
     s.annoGioco++;
     s.annoCalendario++;
@@ -1126,6 +1195,64 @@ export function avanzaMese(
     const servitiG = Math.round(g.copertiDomanda * quotaServita);
     return { ...g, copertiServitiGiorno: servitiG, ricaviGiorno: servitiG * r.scontrinoMedio };
   });
+
+  // ── BANDI: eleggibilità, domande presentate, istruttoria, erogazione
+  const investimento = Math.max(0, dec.investimentoDichiarato ?? (dec.ristrutturazione ?? 0));
+  const profiloBandi: ProfiloRichiedente = {
+    etaTitolare: s.titolare.eta,
+    titolareFemminile: s.titolare.sesso === "F",
+    anniAttivita: s.ristorante.annoAttivita - 1,
+    formaGiuridica: s.ristorante.forma,
+    ricaviUltimoAnno: s.fiscale.ricavi,
+    dipendentiRegolari: s.staff.filter((d) => d.inRegola).length,
+    nuoveAssunzioniAnno: s.nuoveAssunzioniAnno,
+    zona: (s.immobile as any)?.zona ?? "",
+    regione: "Emilia-Romagna",
+    investimentoPrevisto: investimento,
+    investimentoDocumentato: s.investimentoDocumentato,
+    haAccessibilita: (s.scelte.servizi ?? []).includes("accessibilita" as any),
+    usaFilieraCorta: s.scelte.qualitaMaterie === "premium",
+    haSanzioniLavoro: s.controlli.durcIrregolare,
+  };
+  const catalogoBandi: Bando[] = (s as any).__catalogoBandi ?? CATALOGO_ESEMPIO;
+  const eleggibili = bandiDisponibili(catalogoBandi, profiloBandi, s.mese);
+
+  // il DURC irregolare chiude la porta a tutto
+  let costoDomande = 0;
+  for (const idBando of dec.domandeBandi ?? []) {
+    if (s.controlli.durcIrregolare) {
+      eventi.push("🚫 Domanda non presentabile: con il DURC irregolare sei escluso da bandi e sgravi.");
+      break;
+    }
+    const e = eleggibili.find((x) => x.bando.id === idBando);
+    if (!e) { eventi.push("⚠️ Bando non aperto questo mese."); continue; }
+    if (s.domandeBandi.some((d) => d.bandoId === idBando && d.stato === "in_istruttoria")) {
+      eventi.push(`⚠️ Hai già una domanda in istruttoria per "${e.bando.titolo}".`);
+      continue;
+    }
+    const res = presentaDomanda(e, s.annoGioco, s.mese, `dom-${s.annoGioco}-${s.mese}-${idBando}`);
+    if ("errore" in res) { eventi.push(`❌ ${res.errore}`); continue; }
+    // lo studio strutturato prepara domande migliori
+    res.domanda.contributoRichiesto = Math.round(res.domanda.contributoRichiesto);
+    res.domanda.importoRata = res.domanda.contributoRichiesto / Math.max(1, res.domanda.rateResidue);
+    s.domandeBandi.push(res.domanda);
+    costoDomande += res.costo;
+    eventi.push(`📨 Domanda presentata per "${e.bando.titolo}": consulenza ${Math.round(res.costo)}€, ` +
+      `contributo richiesto ${Math.round(res.domanda.contributoRichiesto).toLocaleString("it-IT")}€. ` +
+      `Istruttoria ${e.bando.mesiIstruttoria} mesi.`);
+  }
+
+  const meseAssoluto = (s.annoGioco - 1) * 12 + s.mese;
+  const esitoBandi = avanzaDomande(
+    s.domandeBandi, catalogoBandi,
+    (d) => meseAssoluto - ((d.presentataAnno - 1) * 12 + d.presentataMese),
+    // il commercialista bravo alza le probabilità: sposto la soglia del dado
+    () => Math.max(0, rng() / Math.max(0.5, s.commercialista.bonusBandi)),
+  );
+  eventi.push(...esitoBandi.eventi);
+  if (costoDomande > 0) s.tesoreria.saldo -= costoDomande;
+  if (esitoBandi.incasso > 0) s.tesoreria.saldo += esitoBandi.incasso;
+  s.domandeBandi = s.domandeBandi.filter((d) => d.stato !== "respinta" || meseAssoluto - ((d.presentataAnno - 1) * 12 + d.presentataMese) < 3);
 
   // ── Cruscotto del commercialista: proietta le scadenze e avvisa
   const costoPersonaleMese = Object.values(buste).reduce((a, b) => a + b.costoAzienda, 0);
@@ -1179,6 +1306,12 @@ export function avanzaMese(
     esitiOfferte,
     chiusuraAnno,
     gameOver: s.gameOver,
+    bandi: eleggibili.map((e) => ({
+      id: e.bando.id, titolo: e.bando.titolo, ente: e.bando.ente,
+      ammissibile: e.ammissibile, motiviEsclusione: e.motiviEsclusione,
+      contributoStimato: e.contributoStimato, costoConsulenza: e.bando.costoConsulenza,
+    })),
+    domandeBandi: s.domandeBandi,
     settimana: settimanaDaPianificare(
       r.giorni.map((g) => ({ giorno: g.giorno, dow: g.dow, copertiDomanda: g.copertiDomanda, chiuso: g.chiuso, festivita: g.festivita, maltempo: g.maltempo })),
       0, // dal client si ripassa il giorno in cui si è messo in pausa
