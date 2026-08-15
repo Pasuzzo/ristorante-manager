@@ -100,15 +100,15 @@ function BarraPrep({ rapporto, label }) {
 function CellServizio({ giorno, sv, sp, staff, copertiAttesi, complessita, onChange, locked }) {
   const F = FINESTRE[sv];
   const [aggiungi, setAggiungi] = useState('');
-  if (!sp) return <td className="align-top p-1" />;
+  if (!sp) return <div className="min-w-[150px]" />;
   if (locked) {
     return (
-      <td className="align-top p-1 w-[150px] min-w-[150px]">
+      <div className="min-w-[150px]">
         <div className="rm-card rm-no-radius p-1 opacity-40">
           <div className="rm-pixel text-[7px] text-rm-bg">{sp.aperto ? 'APERTO' : 'CHIUSO'}</div>
           <div className="rm-pixel text-[7px] text-rm-wood-dark mt-1">🔒 {sp.turni.length} in turno</div>
         </div>
-      </td>
+      </div>
     );
   }
 
@@ -132,8 +132,8 @@ function CellServizio({ giorno, sv, sp, staff, copertiAttesi, complessita, onCha
   };
 
   return (
-    <td className="align-top p-1 w-[150px] min-w-[150px]">
-      <div className={`rm-card rm-no-radius p-1 ${sp.aperto ? '' : 'opacity-60'}`}>
+    <div className="min-w-[150px]">
+      <div className={`rm-card rm-no-radius p-1 h-full ${sp.aperto ? '' : 'opacity-60'}`}>
         <button
           onClick={toggleAperto}
           className={`rm-btn ${sp.aperto ? 'rm-btn-green' : 'rm-btn-wood'} text-[7px] w-full py-1`}
@@ -209,7 +209,7 @@ function CellServizio({ giorno, sv, sp, staff, copertiAttesi, complessita, onCha
           </>
         )}
       </div>
-    </td>
+    </div>
   );
 }
 
@@ -307,56 +307,36 @@ export default function Turni({ stato, report, decisioni, setDecisioni, giornoCo
           Modifica un giorno, poi copialo su tutta la settimana.
         </div>
 
-        <div className="overflow-x-auto rm-scroll">
-          <table className="border-separate" style={{ minWidth: 7 * 150 }}>
-            <thead>
-              <tr>
-                {GIORNI.map((g, i) => (
-                  <th key={g} className="rm-pixel text-[8px] text-rm-cream p-1 w-[150px] min-w-[150px] text-left">
-                    {g}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td colSpan={7} className="rm-pixel text-[7px] uppercase text-rm-gold px-1 py-1">PRANZO</td>
-              </tr>
-              <tr>
-                {GIORNI.map((_, dow) => (
-                  <CellServizio
-                    key={`p${dow}`}
-                    giorno={dow}
-                    sv="pranzo"
-                    sp={griglia[dow]?.pranzo}
-                    staff={staff}
-                    copertiAttesi={copertiAttesi}
-                    complessita={complessita}
-                    locked={dowLocked(dow)}
-                    onChange={(cell) => setCell(dow, 'pranzo', cell)}
-                  />
-                ))}
-              </tr>
-              <tr>
-                <td colSpan={7} className="rm-pixel text-[7px] uppercase text-rm-gold px-1 py-1">CENA</td>
-              </tr>
-              <tr>
-                {GIORNI.map((_, dow) => (
-                  <CellServizio
-                    key={`c${dow}`}
-                    giorno={dow}
-                    sv="cena"
-                    sp={griglia[dow]?.cena}
-                    staff={staff}
-                    copertiAttesi={copertiAttesi}
-                    complessita={complessita}
-                    locked={dowLocked(dow)}
-                    onChange={(cell) => setCell(dow, 'cena', cell)}
-                  />
-                ))}
-              </tr>
-            </tbody>
-          </table>
+        <div className="overflow-x-auto rm-scroll pb-1">
+          <div className="grid grid-cols-7 gap-1" style={{ minWidth: 7 * 150 }}>
+            {GIORNI.map((g, dow) => (
+              <div key={g} className="flex flex-col gap-1">
+                <div className="rm-pixel text-[8px] text-rm-cream text-center py-1">{g}</div>
+                <div className="rm-pixel text-[6px] uppercase text-rm-gold text-center">Pranzo</div>
+                <CellServizio
+                  giorno={dow}
+                  sv="pranzo"
+                  sp={griglia[dow]?.pranzo}
+                  staff={staff}
+                  copertiAttesi={copertiAttesi}
+                  complessita={complessita}
+                  locked={dowLocked(dow)}
+                  onChange={(cell) => setCell(dow, 'pranzo', cell)}
+                />
+                <div className="rm-pixel text-[6px] uppercase text-rm-gold text-center">Cena</div>
+                <CellServizio
+                  giorno={dow}
+                  sv="cena"
+                  sp={griglia[dow]?.cena}
+                  staff={staff}
+                  copertiAttesi={copertiAttesi}
+                  complessita={complessita}
+                  locked={dowLocked(dow)}
+                  onChange={(cell) => setCell(dow, 'cena', cell)}
+                />
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="mt-2 flex flex-wrap gap-1">
