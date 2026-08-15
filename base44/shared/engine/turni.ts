@@ -391,4 +391,4 @@ export function demo(): void {
   console.log("turni.ts — self-check OK");
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) demo();
+if (typeof process !== "undefined" && import.meta.url === `file://${process.argv[1]}`) demo();
