@@ -115,6 +115,12 @@ export default function Decisioni({ stato, decisioni, setDecisioni, report }) {
           })}
         </div>
         <Slider label="Listino (1 = mercato)" value={decisioni.listino} set={(v) => set('listino', v)} min={0.7} max={1.6} step={0.05} display={`${Math.round((decisioni.listino - 1) * 100)}%`} />
+        <button onClick={() => set('caparraGruppi', !(decisioni.caparraGruppi ?? false))} className="rm-no-radius w-full p-2 border-[3px] flex items-center justify-between"
+          style={{ backgroundColor: (decisioni.caparraGruppi ?? false) ? '#5a8c46' : '#2b2233', color: '#f2e5bc', borderColor: '#5a3825' }}>
+          <span className="rm-pixel text-[9px]">Caparra sui gruppi</span>
+          <span className="rm-pixel text-[9px]">{(decisioni.caparraGruppi ?? false) ? 'ON' : 'OFF'}</span>
+        </button>
+        <div className="rm-text text-[14px] text-rm-cream/60">Meno no-show, ma qualche cliente si offende e non torna.</div>
       </PixelPanel>
 
       <PixelPanel title="Locale" icon="wrench">

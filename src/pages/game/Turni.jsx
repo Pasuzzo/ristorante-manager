@@ -97,10 +97,20 @@ function BarraPrep({ rapporto, label }) {
   );
 }
 
-function CellServizio({ giorno, sv, sp, staff, copertiAttesi, complessita, onChange }) {
+function CellServizio({ giorno, sv, sp, staff, copertiAttesi, complessita, onChange, locked }) {
   const F = FINESTRE[sv];
   const [aggiungi, setAggiungi] = useState('');
   if (!sp) return <td className="align-top p-1" />;
+  if (locked) {
+    return (
+      <td className="align-top p-1 w-[150px] min-w-[150px]">
+        <div className="rm-card rm-no-radius p-1 opacity-40">
+          <div className="rm-pixel text-[7px] text-rm-bg">{sp.aperto ? 'APERTO' : 'CHIUSO'}</div>
+          <div className="rm-pixel text-[7px] text-rm-wood-dark mt-1">🔒 {sp.turni.length} in turno</div>
+        </div>
+      </td>
+    );
+  }
 
   const presenti = new Set(sp.turni.map((t) => t.idDipendente));
   const disponibili = staff.filter((d) => !presenti.has(d.id));
@@ -203,7 +213,7 @@ function CellServizio({ giorno, sv, sp, staff, copertiAttesi, complessita, onCha
   );
 }
 
-export default function Turni({ stato, report, decisioni, setDecisioni }) {
+export default function Turni({ stato, report, decisioni, setDecisioni, giornoCorrente }) {
   const staff = stato?.staff ?? [];
   const statoGriglia = stato?.griglia ?? grigliaVuota();
   const griglia = decisioni?.griglia ?? statoGriglia;
@@ -211,6 +221,14 @@ export default function Turni({ stato, report, decisioni, setDecisioni }) {
   const buste = report?.buste ?? {};
   const violazioni = report?.violazioniTurni ?? [];
   const bloccanti = violazioni.filter((v) => v.bloccante);
+
+  // Durante la pausa si editano solo i giorni successivi a quello in corso.
+  const dowsModificabili = useMemo(() => {
+    if (giornoCorrente == null) return null;
+    const set = report?.settimana ?? [];
+    return new Set(set.filter((r) => r.giorno > giornoCorrente).map((r) => r.dow));
+  }, [giornoCorrente, report?.settimana]);
+  const dowLocked = (dow) => dowsModificabili != null && !dowsModificabili.has(dow);
 
   const copertiAttesi = Math.round((stato?.locale?.postiASedere ?? 40) * (stato?.locale?.turniMax ?? 2.2));
   const complessita = Math.min(1, (stato?.menu?.length ?? 0) / 18);
@@ -314,6 +332,7 @@ export default function Turni({ stato, report, decisioni, setDecisioni }) {
                     staff={staff}
                     copertiAttesi={copertiAttesi}
                     complessita={complessita}
+                    locked={dowLocked(dow)}
                     onChange={(cell) => setCell(dow, 'pranzo', cell)}
                   />
                 ))}
@@ -331,6 +350,7 @@ export default function Turni({ stato, report, decisioni, setDecisioni }) {
                     staff={staff}
                     copertiAttesi={copertiAttesi}
                     complessita={complessita}
+                    locked={dowLocked(dow)}
                     onChange={(cell) => setCell(dow, 'cena', cell)}
                   />
                 ))}
@@ -352,6 +372,12 @@ export default function Turni({ stato, report, decisioni, setDecisioni }) {
           ))}
         </div>
       </PixelPanel>
+
+      {dowsModificabili != null && (
+        <div className="rm-text text-[14px] text-rm-gold">
+          In pausa: modifichi solo i giorni dopo quello in corso (🔒 = bloccato).
+        </div>
+      )}
 
       <div className="rm-text text-[14px] text-rm-cream/60">
         Arrivi troppo presto = ore pagate a vuoto; troppo tardi = sala o cucina non pronte.

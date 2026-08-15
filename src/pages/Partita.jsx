@@ -73,6 +73,7 @@ export default function Partita() {
   const [showReport, setShowReport] = useState(false);
   const [bandi, setBandi] = useState(null);
   const [playback, setPlayback] = useState(null);
+  const [giornoCorrente, setGiornoCorrente] = useState(null);
 
   const carica = async () => {
     try {
@@ -121,7 +122,7 @@ export default function Partita() {
       setPartita(agg);
       setReport(res.report);
       setBandi(res.bandi ?? null);
-      setPlayback({ giorni: res.report?.giorni ?? [], mese: res.report?.mese });
+      setPlayback({ giorni: res.report?.giorni ?? [], mese: res.report?.mese, settimana: res.report?.settimana ?? [] });
       setDecisioni(defaultDecisioni(agg.stato));
     } catch (e) {
       const msg = e?.response?.data?.error || e?.message || 'Errore';
@@ -167,7 +168,9 @@ export default function Partita() {
           <CalendarStrip
             giorni={playback.giorni}
             nomeMese={nomeMese(playback.mese)}
+            settimana={playback.settimana}
             onFine={() => { setPlayback(null); setShowReport(true); }}
+            onApriGriglia={(g) => { setGiornoCorrente(g); setTab('turni'); }}
           />
         </div>
       )}
@@ -177,7 +180,7 @@ export default function Partita() {
         {tab === 'dashboard' && <Dashboard stato={stato} partita={partita} />}
         {tab === 'titolare' && <Titolare stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'staff' && <Staff stato={stato} report={report} decisioni={decisioni} setDecisioni={setDecisioni} />}
-        {tab === 'turni' && <Turni stato={stato} report={report} decisioni={decisioni} setDecisioni={setDecisioni} />}
+        {tab === 'turni' && <Turni stato={stato} report={report} decisioni={decisioni} setDecisioni={setDecisioni} giornoCorrente={giornoCorrente} />}
         {tab === 'mercato' && <Mercato stato={stato} report={report} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'reparti' && <Reparti stato={stato} report={report} decisioni={decisioni} setDecisioni={setDecisioni} />}
         {tab === 'bandi' && <Bandi stato={stato} decisioni={decisioni} setDecisioni={setDecisioni} bandi={bandi} />}

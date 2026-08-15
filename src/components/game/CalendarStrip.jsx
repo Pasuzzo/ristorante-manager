@@ -12,6 +12,7 @@ import { PixelPanel, PixelButton, Stat } from './ui';
  */
 
 const DOW = ['D', 'L', 'M', 'M', 'G', 'V', 'S'];
+const DOW_FULL = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
 const VELOCITA = [
   { label: '1x', ms: 2500 },
   { label: '2x', ms: 1250 },
@@ -59,7 +60,7 @@ function Casella({ g, max, attivo, mostrato }) {
   );
 }
 
-export default function CalendarStrip({ giorni = [], nomeMese = '', onFine, decisioniModificate = 0 }) {
+export default function CalendarStrip({ giorni = [], nomeMese = '', onFine, decisioniModificate = 0, settimana = [], onApriGriglia }) {
   const [indice, setIndice] = useState(0);      // quanti giorni già mostrati
   const [inPlay, setInPlay] = useState(true);
   const [velocita, setVelocita] = useState(0);
@@ -154,6 +155,46 @@ export default function CalendarStrip({ giorni = [], nomeMese = '', onFine, deci
           )}
         </div>
       )}
+
+      {!inPlay && !finito && settimana.length > 0 && (() => {
+        const oltre = settimana.filter((r) => r.pranzo?.oltreOrizzonte || r.cena?.oltreOrizzonte).length;
+        const giornoAttuale = giorni[indice - 1]?.giorno ?? 0;
+        return (
+          <div className="mt-3 rm-card rm-no-radius p-2 rm-shadow">
+            <div className="flex items-center justify-between mb-2">
+              <span className="rm-pixel text-[9px] text-rm-bg">Prossimi 7 giorni</span>
+              <PixelButton variant="blue" className="text-[8px] px-2 py-1" onClick={() => onApriGriglia?.(giornoAttuale)}>
+                Apri griglia
+              </PixelButton>
+            </div>
+            <div className="space-y-1">
+              {settimana.map((r) => (
+                <div key={r.giorno} className="rm-card-dark rm-no-radius p-1">
+                  <div className="flex items-center justify-between">
+                    <span className="rm-pixel text-[8px] text-rm-cream">Giorno {r.giorno} · {DOW_FULL[r.dow] ?? ''}</span>
+                    {r.note?.length > 0 && (
+                      <span className="rm-text text-[13px] text-rm-gold">{r.note.join(' · ')}</span>
+                    )}
+                  </div>
+                  {[['Pranzo', r.pranzo], ['Cena', r.cena]].map(([lbl, s]) => (
+                    <div key={lbl} className="flex gap-2 rm-text text-[14px] text-rm-cream/80 mt-[2px]">
+                      <span className="rm-pixel text-[7px] text-rm-gold w-[40px]">{lbl}</span>
+                      <span>prenotati {s.oltreOrizzonte ? '?' : s.prenotati}</span>
+                      <span>walk {s.walkInMin}–{s.walkInMax}</span>
+                      <span>attesi {s.attesiMin}–{s.attesiMax}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+            {oltre > 3 && (
+              <div className="rm-text text-[14px] text-rm-gold mt-2">
+                Vedi solo i giorni vicini: attiva il gestionale prenotazioni online per vedere 14 giorni con forbice più stretta.
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </PixelPanel>
   );
 }
