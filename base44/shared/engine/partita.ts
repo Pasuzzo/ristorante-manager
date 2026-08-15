@@ -53,6 +53,15 @@ import {
   Scadenza, Consiglio, previsioniScadenze, usciteProiettate, consigliCommercialista,
 } from "./previsioni.ts";
 import {
+  Griglia, PersonaInTurno, EsitoServizio, ViolazioneTurni,
+  grigliaIniziale, valutaServizio, verificaVincoli, affaticamento,
+  QUOTA_PRANZO, COPERTI_SERVIZIO, copertiEffettivi, repartoDi,
+} from "./turni.ts";
+import {
+  ConfigPrenotazioni, RigaSettimana, settimanaDaPianificare, presenzeEffettive, chiamaExtra,
+} from "./prenotazioni.ts";
+import { SANZIONI, accessoRoutine, registraViolazioneCorrispettivi } from "./controlli.ts";
+import {
   StatoReparti, Sforamento, RispostaSforamento, nuovoStatoReparti,
   aggiornaAffidabilita, valutaSforamento, effettoBudgetStretto, EFFETTI_RISPOSTA,
 } from "./reparti.ts";
@@ -105,6 +114,10 @@ export interface StatoPartita {
   /** monte ore settimanale per dipendente (feriale/festivo) */
   orari: Record<string, Orario>;
   nero: StatoNero;
+  /** settimana tipo: 7 giorni × pranzo/cena, con orari e arrivi */
+  griglia: Griglia;
+  /** il locale accetta caparre sui gruppi */
+  caparraGruppi: boolean;
   reparti: StatoReparti;
   controlli: StatoControlli;
   /** eventi del mese in corso, generati proceduralmente */
@@ -160,8 +173,12 @@ export interface DecisioniMese {
   ristrutturazione?: number;
   /** come il titolare organizza i compiti (delega vs fai-da-te) */
   compiti?: Partial<GestioneCompiti>;
-  /** monte ore settimanale per dipendente: { idDipendente: {oreFeriali, oreFestive} } */
+  /** monte ore settimanale (retrocompatibile: se c'è la griglia, vince la griglia) */
   orari?: Record<string, Orario>;
+  /** la griglia settimanale: è questa che comanda */
+  griglia?: Griglia;
+  /** caparra sui gruppi: meno no-show, qualche cliente in meno */
+  caparraGruppi?: boolean;
   /** in caso di sovraccarico: straordinari (paghi la maggiorazione) o clienti respinti */
   politicaSovraccarico?: "straordinari" | "respingi";
   /** quote di incassi/acquisti non dichiarati e politica del fuori busta */
@@ -212,6 +229,14 @@ export interface ReportMese {
   gameOver: boolean;
   /** stato dell'economia questo mese, per la dashboard */
   macro: { inflazione: number; inflazioneAlimentare: number; fiducia: number; salari: number; shock?: string };
+  /** i sette giorni da pianificare quando metti in pausa */
+  settimana: RigaSettimana[];
+  /** violazioni della griglia: 11 ore, riposo settimanale, straordinari */
+  violazioniTurni: ViolazioneTurni[];
+  /** ore settimanali risultanti dalla griglia, per dipendente */
+  oreSettimanali: Record<string, number>;
+  /** esiti dei servizi: ritardi, piatti fuori, ore sprecate */
+  serviziProblematici: Array<{ giorno: number; servizio: Servizio; problema: string }>;
   /** scadenze dei prossimi mesi e consigli del commercialista */
   scadenze: Scadenza[];
   usciteProiettate: Array<{ mesiAvanti: number; mese: number; totale: number }>;
@@ -386,6 +411,11 @@ export function nuovaPartita(c: ConfigNuovaPartita, cfg: FiscalConfig = FISCAL_2
     compiti: { ...COMPITI_DEFAULT },
     orari: Object.fromEntries(staff.map((d) => [d.id, { oreFeriali: 24, oreFestive: 16 }])),
     nero: nuovoStatoNero(),
+    griglia: grigliaIniziale(
+      staff.map((d) => ({ id: d.id, ruolo: (d as any).ruoloEsteso ?? d.ruolo })),
+      1,
+    ),
+    caparraGruppi: false,
     reparti: nuovoStatoReparti(),
     controlli: nuovoStatoControlli(),
     eventiLocali: [],
@@ -438,6 +468,27 @@ export function avanzaMese(
   if (!s.orari) s.orari = {};
   for (const d of s.staff) if (!s.orari[d.id]) s.orari[d.id] = { oreFeriali: 24, oreFestive: 16 };
   if (!s.nero) s.nero = nuovoStatoNero();
+  if (!s.griglia) s.griglia = grigliaIniziale(s.staff.map((d: any) => ({ id: d.id, ruolo: d.ruoloEsteso ?? d.ruolo })), s.locale.giornoChiusura ?? 1);
+  if (dec.griglia) s.griglia = dec.griglia;
+  if (dec.caparraGruppi !== undefined) s.caparraGruppi = dec.caparraGruppi;
+  // Solo i NUOVI assunti entrano in griglia, con gli arrivi di default e
+  // un giorno di riposo: chi è già in griglia mantiene i turni decisi.
+  for (const d of s.staff as any[]) {
+    const giaInGriglia = s.griglia.some((g) =>
+      g.pranzo.turni.some((t) => t.idDipendente === d.id) ||
+      g.cena.turni.some((t) => t.idDipendente === d.id));
+    if (giaInGriglia) continue;
+    const reparto = repartoDi(d.ruoloEsteso ?? d.ruolo);
+    const riposo = (s.locale.giornoChiusura ?? 1) === 0 ? 3 : 0; // secondo giorno libero
+    for (let dow = 0; dow < 7; dow++) {
+      if (dow === riposo) continue;
+      for (const sv of ["pranzo", "cena"] as Servizio[]) {
+        const sp = s.griglia[dow][sv];
+        if (!sp.aperto) continue;
+        sp.turni.push({ idDipendente: d.id, oraArrivo: sp.oraApertura - (reparto === "cucina" ? 3 : 1.5) });
+      }
+    }
+  }
   if (!s.assenze) s.assenze = nuovoStatoAssenze();
   if (!s.formazione) s.formazione = nuovoStatoFormazione();
   if (!s.politicheNero) s.politicheNero = { quotaScontrino: 0, quotaAcquisti: 0, pagaNeroInAssenza: true };
@@ -592,19 +643,67 @@ export function avanzaMese(
   const lavoratori: Lavoratore[] = operativi.map((d) => ({
     id: d.id, nome: d.nome,
     ruolo: (d as any).ruoloEsteso ?? d.ruolo,
-    contratto: ((d as any).contratto ?? "indeterminato") as TipoContratto,
+    contratto: ((d as any).tipoContrattuale ?? "indeterminato") as TipoContratto,
     orario: s.orari[d.id] ?? { oreFeriali: 24, oreFestive: 16 },
     superminimo: d.superminimo,
     quotaNero: d.inRegola ? ((d as any).quotaNero ?? 0) : 1,
     velocita: d.attributi.velocita,
     morale: d.morale,
   }));
+  // ── I servizi della settimana tipo, applicati ai giorni del mese
+  const inTurno: PersonaInTurno[] = operativi.map((d: any) => ({
+    id: d.id, nome: d.nome, ruolo: d.ruoloEsteso ?? d.ruolo,
+    velocita: d.attributi.velocita, resistenza: d.attributi.resistenza, morale: d.morale,
+  }));
+  const quotaPranzo = QUOTA_PRANZO[s.locale.tipoLocalita] ?? 0.4;
+  const complessita = Math.min(1, (s.menu?.length ?? 0) / 18);
+  const serviziProblematici: ReportMese["serviziProblematici"] = [];
+  let capacitaMensile = 0, oreSprecateMese = 0, moltGradServizi = 0, nServizi = 0;
+  const oreMeseDaGriglia: Record<string, number> = {};
+
+  for (const g of r.giorni) {
+    if (g.chiuso) continue;
+    const pian = s.griglia[g.dow];
+    for (const sv of ["pranzo", "cena"] as Servizio[]) {
+      const sp = pian[sv];
+      if (!sp.aperto) continue;
+      const attesi = g.copertiDomanda * (sv === "pranzo" ? quotaPranzo : 1 - quotaPranzo);
+      const es = valutaServizio(sp, sv, inTurno, attesi, {
+        complessitaMenu: complessita,
+        haDehors: (s.scelte.servizi ?? []).includes("dehors" as any),
+      });
+      capacitaMensile += es.capacita;
+      oreSprecateMese += es.oreSprecate;
+      moltGradServizi += es.moltGradimento; nServizi++;
+      for (const [id, ore] of Object.entries(es.oreLavorate)) {
+        oreMeseDaGriglia[id] = (oreMeseDaGriglia[id] ?? 0) + ore;
+      }
+      if (es.ritardoApertura > 0 || es.piattiFuori > 0) {
+        serviziProblematici.push({
+          giorno: g.giorno, servizio: sv,
+          problema: es.ritardoApertura > 0
+            ? `apertura in ritardo di ${es.ritardoApertura} min`
+            : `${es.piattiFuori} piatti fuori menu`,
+        });
+        if (serviziProblematici.length <= 3) eventi.push(`${sv === "pranzo" ? "🍽️" : "🌙"} Giorno ${g.giorno}: ${es.eventi[0] ?? ""}`);
+      }
+    }
+  }
+  const grigliaAttiva = capacitaMensile > 0;
+
   const capOre = capacitaSquadra(lavoratori, Math.round(r.copertiTotali / ORARIO.settimanePerMese));
   // ~4,33 settimane al mese; il titolare che copre un ruolo è già dentro `operativi`
-  if (lavoratori.length) perf.capacitaCoperti = Math.max(1, capOre.copertiSettimana * ORARIO.settimanePerMese);
+  if (grigliaAttiva) perf.capacitaCoperti = capacitaMensile;
+  else if (lavoratori.length) perf.capacitaCoperti = capOre.copertiSettimana * ORARIO.settimanePerMese;
   eventi.push(...capOre.avvisi);
   perf.cucina = Math.min(1, perf.cucina * fattoreEsecuzione); // il menu giusto (o sbagliato) per la brigata
   let { serviti, respinti } = serviCoperti(r.copertiTotali, perf);
+  // Senza una brigata capace di coprire cucina E sala non si apre proprio.
+  if (perf.capacitaCoperti < 20) {
+    respinti += serviti;
+    serviti = 0;
+    eventi.push("🚪 LOCALE CHIUSO: senza brigata non si apre. Zero incassi, ma affitto e contributi corrono lo stesso. Assumi subito.");
+  }
   // burnout prolungato: il fisico può cedere — giorni a letto, locale a mezzo servizio
   if (s.titolare.burnout && s.titolare.mesiInBurnout >= EFFETTI_BURNOUT.mesiPrimaDelCrollo
       && rng() < EFFETTI_BURNOUT.probCrolloMensile) {
@@ -659,6 +758,7 @@ export function avanzaMese(
   const fattoreStile = nStile ? (moltStile - 1) / nStile : 1;
 
   const grad = gradimentoMese(perf, s.scelte, serviti);
+  if (nServizi > 0) grad.voto *= moltGradServizi / nServizi;
   grad.voto = Math.max(0.05, Math.min(1, grad.voto * fattoreStile * (s.titolare.burnout ? moltGradimentoBurnout(s.titolare.mesiInBurnout) : 1)));
   eventi.push(...grad.eventi);
   eventi.push(...aggiornaLocale(s.scelte, serviti));
@@ -677,7 +777,7 @@ export function avanzaMese(
   }
 
   const morale = aggiornaMorale(s.staff, {
-    caricoLavoro: serviti / perf.capacitaCoperti,
+    caricoLavoro: serviti / Math.max(1, perf.capacitaCoperti),
     riposoSettimanale: s.locale.giornoChiusura !== null,
   }, rng);
   eventi.push(...morale.eventi);
@@ -775,10 +875,15 @@ export function avanzaMese(
   const busteTesoreria: Record<string, any> = {};
   for (const l of lavoratori) {
     if (l.id === "__titolare__") continue; // il titolare non ha busta
+    const oreGriglia = oreMeseDaGriglia[l.id];
     const persoAssenze = esitoAssenze.quotaOrePerse[l.id] ?? 0;
     const oreAula = (esitoFormazione.oreSottratte[l.id] ?? 0) / ORARIO.settimanePerMese;
+    // se la griglia è attiva, le ore le decide lei: il monte ore è un risultato
+    const oreBase = oreGriglia !== undefined
+      ? oreGriglia / ORARIO.settimanePerMese
+      : oreSettimanali(l.orario);
     const oreReali = Math.max(0,
-      oreSettimanali(l.orario) * (1 - persoAssenze)
+      oreBase * (1 - persoAssenze)
       - oreAula
       + oreStraordinarie / Math.max(1, lavoratori.length) / ORARIO.settimanePerMese);
     const b = bustaPaga(l, oreReali, cfg);
@@ -874,6 +979,16 @@ export function avanzaMese(
     burnoutTitolare: s.titolare.burnout,
   }, rng));
 
+  // ── Vincoli della griglia: 11 ore, riposo settimanale, straordinari
+  const vincoli = verificaVincoli(s.griglia, s.staff.map((d: any) => ({ id: d.id, nome: d.nome, resistenza: d.attributi.resistenza })));
+  for (const v of vincoli.violazioni.filter((x) => x.bloccante).slice(0, 2)) {
+    eventi.push(`⚖️ ${v.messaggio}`);
+  }
+  for (const d of s.staff as any[]) {
+    const aff = affaticamento(vincoli.spezzati[d.id] ?? 0, d.attributi.resistenza);
+    if (aff > 0) d.morale = Math.max(5, d.morale - aff * 0.5);
+  }
+
   // ── CONTROLLI: NAS, Finanza, Ispettorato
   const infortunio = (serviti / Math.max(1, perf.capacitaCoperti)) > 1.25 && rng() < 0.05;
   if (infortunio) eventi.push("🚑 Infortunio sul lavoro: qualcuno si è fatto male nella confusione del servizio.");
@@ -890,6 +1005,7 @@ export function avanzaMese(
     moraleMedio: moraleMedio,
     affidabilitaCommercialista: s.commercialista.affidabilita,
     personeCheSanno: (s.reparti.responsabileCucina ? 1 : 0) + (s.reparti.responsabileSala ? 1 : 0),
+    ricaviNonDichiaratiAnno: s.nero.ricaviNonDichiarati,
   };
   const prontezza = calcolaProntezza(ctxControlli);
   let ispezione: ReportMese["ispezione"];
@@ -912,8 +1028,29 @@ export function avanzaMese(
     }
     break; // un controllo per mese: il secondo arriva col meccanismo della cascata
   }
+  // accesso di routine: capita a tutti, anche a chi è in ordine
+  const routine = accessoRoutine(s.controlli, prontezza, rng);
+  eventi.push(...routine.eventi);
+  sanzioniControlli += routine.sanzioneFormale;
+
+  // se la Finanza trova scontrini non emessi, scatta il contatore quinquennale
+  if (ispezione && ispezione.ente === "finanza" && s.nero.ricaviNonDichiarati > 0) {
+    const ivaEvasa = (s.nero.ricaviNonDichiarati / (1 + cfg.iva.somministrazione)) * cfg.iva.somministrazione;
+    const sanzioneCorr = Math.max(SANZIONI.minimoCorrispettivi, ivaEvasa * SANZIONI.quotaCorrispettivi);
+    sanzioniControlli += sanzioneCorr;
+    eventi.push(`🧾 Corrispettivi non memorizzati: ${Math.round(sanzioneCorr).toLocaleString("it-IT")}€ ` +
+      `(70% dell'IVA, minimo 300€ a violazione).`);
+    const viol = registraViolazioneCorrispettivi(s.controlli, (s.annoGioco - 1) * 12 + s.mese, s.nero.ricaviNonDichiarati);
+    eventi.push(...viol.eventi);
+    s.controlli.sospensioneGiorni += viol.sospensioneGiorni;
+  }
+
   const avanz = avanzaControlli(s.controlli);
   eventi.push(...avanz.eventi);
+
+  if (oreSprecateMese > 6) {
+    eventi.push(`⏳ ${Math.round(oreSprecateMese)} ore pagate senza servizio questo mese: la brigata arriva troppo presto.`);
+  }
 
   const foodCostSalvato = s.ristorante.foodCostPct;
   s.ristorante.foodCostPct = Math.max(0.15, Math.min(0.75, s.ristorante.foodCostPct + deltaFoodCompiti));
@@ -1042,6 +1179,20 @@ export function avanzaMese(
     esitiOfferte,
     chiusuraAnno,
     gameOver: s.gameOver,
+    settimana: settimanaDaPianificare(
+      r.giorni.map((g) => ({ giorno: g.giorno, dow: g.dow, copertiDomanda: g.copertiDomanda, chiuso: g.chiuso, festivita: g.festivita, maltempo: g.maltempo })),
+      0, // dal client si ripassa il giorno in cui si è messo in pausa
+      QUOTA_PRANZO[s.locale.tipoLocalita] ?? 0.4,
+      {
+        online: s.compiti.prenotazioni === "software",
+        caparraGruppi: !!s.caparraGruppi,
+        zona: (s.immobile as any)?.zona ?? "semicentro",
+      },
+      rng,
+    ),
+    violazioniTurni: vincoli.violazioni,
+    oreSettimanali: vincoli.oreSettimanali,
+    serviziProblematici,
     scadenze,
     usciteProiettate: usciteProiettate(scadenze, 4),
     consigli,
