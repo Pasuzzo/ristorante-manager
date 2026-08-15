@@ -136,7 +136,7 @@ function CellServizio({ giorno, sv, sp, staff, copertiAttesi, complessita, onCha
       <div className={`rm-card rm-no-radius p-1 h-full ${sp.aperto ? '' : 'opacity-60'}`}>
         <button
           onClick={toggleAperto}
-          className={`rm-btn ${sp.aperto ? 'rm-btn-green' : 'rm-btn-wood'} text-[7px] w-full py-1`}
+          className={`rm-btn ${sp.aperto ? 'rm-btn-green' : 'rm-btn-wood'} text-[8px] w-full py-1 text-center`}
         >
           {sp.aperto ? 'APERTO' : 'CHIUSO'}
         </button>
@@ -307,36 +307,40 @@ export default function Turni({ stato, report, decisioni, setDecisioni, giornoCo
           Modifica un giorno, poi copialo su tutta la settimana.
         </div>
 
-        <div className="overflow-x-auto rm-scroll pb-1">
-          <div className="grid grid-cols-7 gap-1" style={{ minWidth: 7 * 150 }}>
-            {GIORNI.map((g, dow) => (
-              <div key={g} className="flex flex-col gap-1">
-                <div className="rm-pixel text-[8px] text-rm-cream text-center py-1">{g}</div>
-                <div className="rm-pixel text-[6px] uppercase text-rm-gold text-center">Pranzo</div>
-                <CellServizio
-                  giorno={dow}
-                  sv="pranzo"
-                  sp={griglia[dow]?.pranzo}
-                  staff={staff}
-                  copertiAttesi={copertiAttesi}
-                  complessita={complessita}
-                  locked={dowLocked(dow)}
-                  onChange={(cell) => setCell(dow, 'pranzo', cell)}
-                />
-                <div className="rm-pixel text-[6px] uppercase text-rm-gold text-center">Cena</div>
-                <CellServizio
-                  giorno={dow}
-                  sv="cena"
-                  sp={griglia[dow]?.cena}
-                  staff={staff}
-                  copertiAttesi={copertiAttesi}
-                  complessita={complessita}
-                  locked={dowLocked(dow)}
-                  onChange={(cell) => setCell(dow, 'cena', cell)}
-                />
+        <div className="space-y-2">
+          {GIORNI.map((g, dow) => (
+            <div key={g} className="rm-card-dark rm-no-radius p-1">
+              <div className="rm-pixel text-[9px] text-rm-cream text-center py-1 border-b-[2px] border-rm-wood-dark mb-1">{g}</div>
+              <div className="grid grid-cols-2 gap-1">
+                <div className="flex flex-col gap-1">
+                  <div className="rm-pixel text-[6px] uppercase text-rm-gold text-center">Pranzo</div>
+                  <CellServizio
+                    giorno={dow}
+                    sv="pranzo"
+                    sp={griglia[dow]?.pranzo}
+                    staff={staff}
+                    copertiAttesi={copertiAttesi}
+                    complessita={complessita}
+                    locked={dowLocked(dow)}
+                    onChange={(cell) => setCell(dow, 'pranzo', cell)}
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <div className="rm-pixel text-[6px] uppercase text-rm-gold text-center">Cena</div>
+                  <CellServizio
+                    giorno={dow}
+                    sv="cena"
+                    sp={griglia[dow]?.cena}
+                    staff={staff}
+                    copertiAttesi={copertiAttesi}
+                    complessita={complessita}
+                    locked={dowLocked(dow)}
+                    onChange={(cell) => setCell(dow, 'cena', cell)}
+                  />
+                </div>
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
 
         <div className="mt-2 flex flex-wrap gap-1">
