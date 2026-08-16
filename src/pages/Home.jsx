@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { PixelButton, StarRating, Chip } from '@/components/game/ui';
 import { Icon } from '@/components/game/icons';
 import { gioco } from '@/lib/gioco';
+import { base44 } from '@/api/base44Client';
 import { eliminaPartita, money, nomeMese } from '@/lib/partita';
 
 function dataUltimo(iso) {
@@ -15,7 +16,21 @@ function dataUltimo(iso) {
 export default function Home() {
   const [righe, setRighe] = useState(null);
   const [errore, setErrore] = useState('');
+  const [cloudMsg, setCloudMsg] = useState('');
+  const [cloudBusy, setCloudBusy] = useState(false);
   const navigate = useNavigate();
+
+  const carica = async () => {
+    try {
+      const r = await gioco.elenco();
+      setRighe(r);
+      return r;
+    } catch (e) {
+      setErrore(e?.message ?? 'Errore di caricamento');
+      setRighe([]);
+      return [];
+    }
+  };
 
   // Apertura app: riprendi l'ultima partita non finita. Solo al primo
   // mount della sessione; se l'utente torna qui da una partita, mostro l'elenco.
@@ -23,16 +38,44 @@ export default function Home() {
     const visto = sessionStorage.getItem('rm:homeVisto');
     sessionStorage.setItem('rm:homeVisto', '1');
     (async () => {
-      let r;
-      try { r = await gioco.elenco(); }
-      catch (e) { setErrore(e?.message ?? 'Errore di caricamento'); setRighe([]); return; }
+      const r = await carica();
       if (!visto) {
         const ultima = r.find((x) => !x.gameOver);
-        if (ultima) { navigate(`/partita/${ultima.id}`, { replace: true }); return; }
+        if (ultima) navigate(`/partita/${ultima.id}`, { replace: true });
       }
-      setRighe(r);
     })();
   }, []);
+
+  // Backup cloud facoltativo: scrive l'export nell'entità Partita (campo stato).
+  const salvaCloud = async () => {
+    setCloudMsg(''); setCloudBusy(true);
+    try {
+      const payload = JSON.parse(await gioco.esporta());
+      const rec = await base44.entities.Partita.filter({ nome: '__cloud_backup__' });
+      if (rec.length) await base44.entities.Partita.update(rec[0].id, { stato: payload });
+      else await base44.entities.Partita.create({ nome: '__cloud_backup__', stato: payload });
+      setCloudMsg('Backup sul cloud OK');
+    } catch (e) {
+      setCloudMsg('Errore backup: ' + (e?.message ?? ''));
+    } finally {
+      setCloudBusy(false);
+    }
+  };
+
+  const ripristinaCloud = async () => {
+    setCloudMsg(''); setCloudBusy(true);
+    try {
+      const rec = await base44.entities.Partita.filter({ nome: '__cloud_backup__' });
+      if (!rec.length) { setCloudMsg('Nessun backup trovato'); return; }
+      const res = await gioco.importa(JSON.stringify(rec[0].stato));
+      await carica();
+      setCloudMsg(`Ripristinate ${res.importate} partite${res.errori ? ` (${res.errori} errori)` : ''}`);
+    } catch (e) {
+      setCloudMsg('Errore ripristino: ' + (e?.message ?? ''));
+    } finally {
+      setCloudBusy(false);
+    }
+  };
 
   const elimina = async (id) => {
     try {
@@ -101,6 +144,15 @@ export default function Home() {
           ))}
         </div>
       )}
+
+      <div className="rm-card-dark rm-no-radius p-3 mt-4">
+        <div className="rm-pixel text-[10px] text-rm-cream mb-2">BACKUP CLOUD (opzionale)</div>
+        <div className="flex gap-2 flex-wrap">
+          <PixelButton variant="blue" className="text-[9px] py-2 rm-tap" disabled={cloudBusy} onClick={salvaCloud}>Salva sul cloud</PixelButton>
+          <PixelButton variant="wood" className="text-[9px] py-2 rm-tap" disabled={cloudBusy} onClick={() => { if (confirm('Sovrascrivi le partite locali con il backup cloud?')) ripristinaCloud(); }}>Ripristina</PixelButton>
+        </div>
+        {cloudMsg && <div className="rm-text text-[15px] text-rm-gold mt-2">{cloudMsg}</div>}
+      </div>
     </div>
   );
 }
