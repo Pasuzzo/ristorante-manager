@@ -143,7 +143,7 @@ export default function Partita() {
       {/* Header */}
       <header className="rm-wood rm-no-radius rm-shadow p-2 mb-3 sticky top-0 z-30">
         <div className="flex items-center justify-between gap-2">
-          <button onClick={() => navigate('/')} className="rm-pixel text-[10px] text-rm-cream/80">‹ Partite</button>
+          <button onClick={() => navigate('/')} aria-label="Torna alle partite" className="rm-pixel text-[10px] text-rm-cream/80">‹ Partite</button>
           <span className="rm-pixel text-[11px] text-rm-cream truncate max-w-[50%]">{partita.nome || stato?.ristorante?.nome}</span>
           <span className="rm-pixel text-[10px] text-rm-gold">{nomeMese(stato?.mese)} A{stato?.annoGioco}</span>
         </div>
@@ -203,11 +203,11 @@ export default function Partita() {
 
       {/* Bottom nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-30 rm-card-dark rm-no-radius border-t-[4px] border-rm-wood-dark">
-        <div className="max-w-3xl mx-auto grid grid-cols-4 sm:grid-cols-8">
+        <div className="max-w-3xl mx-auto grid grid-cols-4 sm:grid-cols-8 lg:grid-cols-11">
           {TABS.map((t) => {
             const on = tab === t.key;
             return (
-              <button key={t.key} onClick={() => setTab(t.key)} className="py-2 flex flex-col items-center gap-1">
+              <button key={t.key} onClick={() => setTab(t.key)} aria-label={t.label} aria-current={on ? 'page' : undefined} className="rm-tap py-2 flex flex-col items-center gap-1 w-full">
                 <Icon name={t.icon} size={18} color={on ? '#e8b84b' : '#f2e5bc'} />
                 <span className={`rm-pixel text-[7px] ${on ? 'text-rm-gold' : 'text-rm-cream/70'}`}>{t.label}</span>
               </button>

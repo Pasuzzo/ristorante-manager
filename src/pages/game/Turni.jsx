@@ -167,7 +167,7 @@ function CellServizio({ giorno, sv, sp, staff, copertiAttesi, complessita, onCha
                   <div key={t.idDipendente} className="rm-card-dark rm-no-radius p-1">
                     <div className="flex items-center justify-between">
                       <span className="rm-pixel text-[7px] text-rm-cream truncate">{d.nome}</span>
-                      <button onClick={() => rimuovi(t.idDipendente)} className="rm-pixel text-[8px] text-rm-red">✕</button>
+                      <button onClick={() => rimuovi(t.idDipendente)} aria-label={`Rimuovi ${d.nome} dal turno`} className="rm-pixel text-[8px] text-rm-red">✕</button>
                     </div>
                     <div className="flex items-center gap-1 mt-1">
                       <input
@@ -198,7 +198,7 @@ function CellServizio({ giorno, sv, sp, staff, copertiAttesi, complessita, onCha
                     <option key={d.id} value={d.id}>{d.nome}</option>
                   ))}
                 </select>
-                <PixelButton variant="wood" className="text-[8px] px-2 py-[2px]" onClick={aggiungiPersona}>+</PixelButton>
+                <PixelButton variant="wood" className="text-[8px] px-2 py-[2px]" aria-label="Aggiungi persona al turno" onClick={aggiungiPersona}>+</PixelButton>
               </div>
             )}
 

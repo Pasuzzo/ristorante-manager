@@ -180,6 +180,28 @@
   .rm-scroll::-webkit-scrollbar-track { background: #2b2233; }
   .rm-scroll::-webkit-scrollbar-thumb { background: #5a3825; border: 2px solid #2b2233; }
   .pixelated { image-rendering: pixelated; image-rendering: crisp-edges; }
+  .rm-tap { min-height: 44px; }
+}
+
+/* Accessibilità: anello di focus visibile per chi naviga da tastiera */
+.rm-btn:focus-visible,
+.rm-input:focus-visible,
+button:focus-visible,
+select:focus-visible,
+input[type="range"]:focus-visible,
+a:focus-visible {
+  outline: 3px solid #e8b84b;
+  outline-offset: 2px;
+}
+
+/* Rispetta prefers-reduced-motion: disabilita le animazioni pixel */
+@media (prefers-reduced-motion: reduce) {
+  .rm-blink, .rm-sign, .rm-pop { animation: none !important; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 @keyframes rm-blink { 50% { opacity: 0; } }

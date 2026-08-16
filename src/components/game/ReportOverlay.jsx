@@ -57,7 +57,7 @@ export default function ReportOverlay({ report, onClose, onGameOverChiudi, nomeR
               {nomeMese(report.mese)} · Anno {report.annoGioco}
             </span>
           </div>
-          <button onClick={report.gameOver ? onGameOverChiudi : onClose} className="rm-pixel text-[12px] text-rm-bg">✕</button>
+          <button onClick={report.gameOver ? onGameOverChiudi : onClose} aria-label="Chiudi report" className="rm-pixel text-[12px] text-rm-bg">✕</button>
         </div>
 
         <div className="p-3 space-y-3">

@@ -34,15 +34,15 @@ export default function Home() {
         <div className="flex items-center gap-3">
           <Icon name="chef" size={28} color="#f2e5bc" />
           <div>
-            <h1 className="rm-pixel text-[16px] text-rm-cream leading-none">RISTORANTE MANAGER</h1>
-            <p className="rm-text text-[16px] text-rm-cream/70 leading-none mt-1">Simulatore gestionale di una trattoria italiana</p>
+            <h1 className="rm-pixel text-[16px] text-rm-cream leading-none text-balance">RISTORANTE MANAGER</h1>
+            <p className="rm-text text-[16px] text-rm-cream/70 leading-none mt-1 text-pretty">Simulatore gestionale di una trattoria italiana</p>
           </div>
         </div>
       </header>
 
       <div className="flex items-center justify-between mb-2">
-        <h2 className="rm-pixel text-[12px] text-rm-cream">LE TUE PARTITE</h2>
-        <PixelButton variant="green" className="text-[10px] py-2" onClick={() => navigate('/nuova')}>+ Nuova partita</PixelButton>
+        <h2 className="rm-pixel text-[12px] text-rm-cream text-balance">LE TUE PARTITE</h2>
+        <PixelButton variant="green" className="text-[10px] py-2 rm-tap" onClick={() => navigate('/nuova')}>+ Nuova partita</PixelButton>
       </div>
 
       {errore && <div className="rm-card-dark rm-no-radius p-2 mb-3 text-rm-red rm-text text-[16px]">{errore}</div>}
@@ -61,7 +61,7 @@ export default function Home() {
             return (
               <div key={p.id} className="rm-card rm-no-radius rm-shadow p-3">
                 <div className="flex items-start justify-between gap-2">
-                  <button onClick={() => navigate(`/partita/${p.id}`)} className="text-left flex-1 min-w-0">
+                  <button onClick={() => navigate(`/partita/${p.id}`)} aria-label={`Gioca ${p.nome || st?.ristorante?.nome || 'Ristorante'}`} className="text-left flex-1 min-w-0">
                     <div className="rm-pixel text-[13px] text-rm-bg truncate">{p.nome || st?.ristorante?.nome || 'Ristorante'}</div>
                     <div className="rm-text text-[16px] text-rm-wood-dark leading-tight mt-1">
                       {formaLabel(st?.ristorante?.forma)} · {localitaLabel(st?.locale?.tipoLocalita)}
@@ -88,8 +88,8 @@ export default function Home() {
                 <div className="flex items-center justify-between mt-3 border-t-2 border-rm-wood-dark/40 pt-2">
                   <span className="rm-text text-[15px] text-rm-wood-dark">{p.turni_giocati} turni giocati</span>
                   <div className="flex gap-2">
-                    <PixelButton variant="blue" className="text-[9px] py-2" onClick={() => navigate(`/partita/${p.id}`)}>Gioca</PixelButton>
-                    <PixelButton variant="wood" className="text-[9px] py-2" onClick={() => { if (confirm('Eliminare questa partita?')) elimina(p.id); }}>Elimina</PixelButton>
+                    <PixelButton variant="blue" className="text-[9px] py-2 rm-tap" onClick={() => navigate(`/partita/${p.id}`)}>Gioca</PixelButton>
+                    <PixelButton variant="wood" className="text-[9px] py-2 rm-tap" aria-label={`Elimina partita ${p.nome}`} onClick={() => { if (confirm('Eliminare questa partita?')) elimina(p.id); }}>Elimina</PixelButton>
                   </div>
                 </div>
               </div>
