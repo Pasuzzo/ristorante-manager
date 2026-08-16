@@ -31,10 +31,19 @@ export function nomeMese(i) {
 
 // ─────────────────────────────────────────────── Entità (best-effort, offline-safe)
 
+// Senza rete le chiamate resterebbero appese: 2s di pazienza, poi si prosegue
+// coi fallback (OMI_ESEMPIO / undefined) senza errori a schermo.
+function conTimeout(promise, ms = 2000) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
+  ]);
+}
+
 /** Quotazioni OMI dall'entità ZonaOmi se raggiungibile, fallback OMI_ESEMPIO. */
 async function leggiZone(comune) {
   try {
-    const righe = await base44.entities.ZonaOmi.list('zona', 200);
+    const righe = await conTimeout(base44.entities.ZonaOmi.list('zona', 200));
     const filtrate = comune ? righe.filter((z) => z.comune === comune) : righe;
     const zone = (filtrate.length ? filtrate : righe)
       .filter((z) => typeof z.affittoMin === 'number')
@@ -55,7 +64,7 @@ async function leggiZone(comune) {
 /** Fotografia Istat dall'entità DatiIstat; undefined se non raggiungibile (fallback del motore). */
 async function leggiDatiIstat() {
   try {
-    const righe = await base44.entities.DatiIstat.list('-salvatoIl', 1);
+    const righe = await conTimeout(base44.entities.DatiIstat.list('-salvatoIl', 1));
     const d = righe?.[0];
     if (!d || typeof d.inflazioneAnnua !== 'number') return undefined;
     return {
