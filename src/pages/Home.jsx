@@ -5,6 +5,7 @@ import { Icon } from '@/components/game/icons';
 import { gioco } from '@/lib/gioco';
 import { base44 } from '@/api/base44Client';
 import { eliminaPartita, money, nomeMese } from '@/lib/partita';
+import { useAuth } from '@/lib/AuthContext';
 
 function dataUltimo(iso) {
   if (!iso) return '—';
@@ -19,6 +20,7 @@ export default function Home() {
   const [cloudMsg, setCloudMsg] = useState('');
   const [cloudBusy, setCloudBusy] = useState(false);
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
 
   const carica = async () => {
     try {
@@ -149,12 +151,23 @@ export default function Home() {
       )}
 
       <div className="rm-card-dark rm-no-radius p-3 mt-4">
-        <div className="rm-pixel text-[10px] text-rm-cream mb-2">BACKUP CLOUD (opzionale)</div>
-        <div className="flex gap-2 flex-wrap">
-          <PixelButton variant="blue" className="text-[9px] py-2 rm-tap" disabled={cloudBusy} onClick={salvaCloud}>Salva sul cloud</PixelButton>
-          <PixelButton variant="wood" className="text-[9px] py-2 rm-tap" disabled={cloudBusy} onClick={() => { if (confirm('Sovrascrivi le partite locali con il backup cloud?')) ripristinaCloud(); }}>Ripristina</PixelButton>
-        </div>
-        {cloudMsg && <div className="rm-text text-[15px] text-rm-gold mt-2">{cloudMsg}</div>}
+        <div className="rm-pixel text-[10px] text-rm-cream mb-2">BACKUP SU CLOUD (FACOLTATIVO)</div>
+        {isAuthenticated ? (
+          <>
+            <div className="flex gap-2 flex-wrap">
+              <PixelButton variant="blue" className="text-[9px] py-2 rm-tap" disabled={cloudBusy} onClick={salvaCloud}>Salva copia online</PixelButton>
+              <PixelButton variant="wood" className="text-[9px] py-2 rm-tap" disabled={cloudBusy} onClick={() => { if (confirm('Sovrascrivi le partite locali con il backup cloud?')) ripristinaCloud(); }}>Ripristina da online</PixelButton>
+            </div>
+            {cloudMsg && <div className="rm-text text-[15px] text-rm-gold mt-2">{cloudMsg}</div>}
+          </>
+        ) : (
+          <>
+            <p className="rm-text text-[16px] text-rm-cream/80 leading-snug">
+              Le partite sono salvate su questo dispositivo. Accedi se vuoi tenerne una copia online.
+            </p>
+            <PixelButton variant="blue" className="text-[9px] py-2 rm-tap mt-2" onClick={() => navigate('/login')}>Accedi</PixelButton>
+          </>
+        )}
       </div>
     </div>
   );
