@@ -354,3 +354,113 @@ export function demo(): void {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) demo();
+
+
+// ─────────────────────────────────────────────── Anteprima dell'offerta
+
+/**
+ * ANTEPRIMA — quello che il giocatore deve vedere mentre muove i cursori.
+ *
+ * Il punto: l'offerta non è un numero solo. Dal lordo che scrivi escono
+ * TRE flussi diversi, e chi assume per la prima volta non lo sa:
+ *   - quanto arriva davvero in tasca al lavoratore
+ *   - quanto trattieni tu e versi per lui (contributi + IRPEF)
+ *   - quanto ci metti di tuo (contributi datore + INAIL + ratei)
+ *
+ * Spostando la quota fuori busta i tre numeri si muovono in direzioni
+ * opposte: il lavoratore prende di più, tu spendi di meno, e lo Stato
+ * incassa di meno. È la meccanica del nero resa visibile.
+ */
+export interface AnteprimaOfferta {
+  /** ore settimanali su cui è calcolata */
+  oreSettimanali: number;
+  /** === quello che riceve il lavoratore === */
+  nettoInBusta: number;
+  cashFuoriBusta: number;
+  nettoTotale: number;
+  /** === quello che paga il lavoratore (trattenuto in busta) === */
+  contributiDipendente: number;
+  irpefEAddizionali: number;
+  totaleTrattenute: number;
+  /** === quello che paga l'azienda oltre al lordo === */
+  lordo: number;
+  contributiDatore: number;
+  inail: number;
+  ratei: number;
+  totaleOneriAzienda: number;
+  /** === il totale === */
+  costoAzienda: number;
+  /** quanto costa all'azienda ogni euro che il lavoratore porta a casa */
+  costoPerEuroNetto: number;
+  /** risparmio rispetto alla stessa offerta tutta in chiaro */
+  risparmioVsRegolare: number;
+}
+
+export function anteprimaOfferta(
+  ruolo: string,
+  superminimo: number,
+  orario: Orario,
+  quotaNero = 0,
+  contratto: TipoContratto = "indeterminato",
+  cfg: FiscalConfig = FISCAL_2026
+): AnteprimaOfferta {
+  const finto = (qn: number): Lavoratore => ({
+    id: "_", nome: "_", ruolo, contratto, orario,
+    superminimo, quotaNero: qn, velocita: 12, morale: 70,
+  });
+  const b = bustaPaga(finto(quotaNero), oreSettimanali(orario), cfg);
+  const pulita = quotaNero > 0 ? bustaPaga(finto(0), oreSettimanali(orario), cfg) : b;
+  const R = CONTRATTI[contratto];
+  const aliquotaDatore = R.aliquotaDatore ?? cfg.inps.dipendenti.aliquotaDatore;
+
+  const contributiDatore = b.lordo * aliquotaDatore;
+  const inail = b.lordo * cfg.inps.dipendenti.inail;
+  const irpefEAddizionali = b.irpef + b.addizionali;
+
+  return {
+    oreSettimanali: oreSettimanali(orario),
+    nettoInBusta: b.nettoInBusta,
+    cashFuoriBusta: b.cashNero,
+    nettoTotale: b.nettoTotale,
+    contributiDipendente: b.contributiDipendente,
+    irpefEAddizionali,
+    totaleTrattenute: b.contributiDipendente + irpefEAddizionali,
+    lordo: b.lordo,
+    contributiDatore, inail, ratei: b.ratei,
+    totaleOneriAzienda: contributiDatore + inail + b.ratei,
+    costoAzienda: b.costoAzienda,
+    costoPerEuroNetto: b.nettoTotale > 0 ? b.costoAzienda / b.nettoTotale : 0,
+    risparmioVsRegolare: pulita.costoAzienda - b.costoAzienda,
+  };
+}
+
+/**
+ * Il netto che il candidato si aspetta, dato il suo superminimo minimo.
+ * Serve a mostrare nella scheda "chiede circa X € netti al mese" invece
+ * di un moltiplicatore CCNL che non dice niente a nessuno.
+ */
+export function nettoDesiderato(
+  ruolo: string,
+  superminimoMinimo: number,
+  orario: Orario = { oreFeriali: 24, oreFestive: 16 },
+  cfg: FiscalConfig = FISCAL_2026
+): number {
+  return anteprimaOfferta(ruolo, superminimoMinimo, orario, 0, "indeterminato", cfg).nettoTotale;
+}
+
+/** Il superminimo che serve per far arrivare al lavoratore un dato netto. */
+export function superminimoPerNetto(
+  ruolo: string,
+  nettoObiettivo: number,
+  orario: Orario,
+  quotaNero = 0,
+  cfg: FiscalConfig = FISCAL_2026
+): number {
+  let lo = 0.8, hi = 2.5;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    const n = anteprimaOfferta(ruolo, mid, orario, quotaNero, "indeterminato", cfg).nettoTotale;
+    if (n < nettoObiettivo) lo = mid; else hi = mid;
+  }
+  return Math.round(((lo + hi) / 2) * 100) / 100;
+}

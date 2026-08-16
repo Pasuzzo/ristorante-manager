@@ -19,6 +19,7 @@
  */
 
 import { DipendenteEsteso, Attributi } from "./reputazione.ts";
+import { anteprimaOfferta, nettoDesiderato, Orario } from "./contratti.ts";
 
 // ─────────────────────────────────────────────── Ruoli
 
@@ -148,6 +149,9 @@ export interface Pretese {
   accettaNero: boolean;
   /** pretende un giorno di riposo fisso */
   vuoleRiposoFisso: boolean;
+  /** quanto vuole portare a casa al mese, full time. È il numero che il
+   *  giocatore deve accontentare: il moltiplicatore CCNL non dice niente. */
+  nettoDesiderato: number;
   nota: string;
 }
 
@@ -240,6 +244,8 @@ export function generaCandidato(id: string, opt: OpzioniMercato, rng: () => numb
   const famiglia = pick(Object.keys(EFFETTI_FAMIGLIA) as Famiglia[], rng);
   const stile = pick(Object.keys(AFFINITA) as Stile[], rng);
   const pretese = generaPretese(tratti, famiglia, eta, attributi, bf.pretesaPaga, opt.pressioneStagionale ?? 1, rng);
+  // quello che vuole portare a casa: è il numero che il giocatore deve centrare
+  pretese.nettoDesiderato = Math.round(nettoDesiderato(ruolo, pretese.superminimoMinimo));
 
   // vetrina: incertezza maggiore per i giovani (meno storico verificabile)
   const incertezza = eta < 25 ? 4 : eta < 35 ? 3 : 2;
@@ -317,10 +323,12 @@ function generaPretese(
   if (fam.pretesaStabilita > 0.8) note.push(fam.nota);
   if (studente) note.push("disponibile solo weekend e sere");
 
+  const superminimoMinimo = Math.round(sup * 100) / 100;
   return {
-    contratto, accettaNero,
-    superminimoMinimo: Math.round(sup * 100) / 100,
+    contratto, accettaNero, superminimoMinimo,
     vuoleRiposoFisso: fam.pretesaStabilita > 0.7 || sindacalizzato,
+    // riempito da generaCandidato, che conosce il ruolo
+    nettoDesiderato: 0,
     nota: note.join("; ") || "flessibile",
   };
 }
@@ -346,6 +354,15 @@ export interface Offerta {
   inRegola: boolean;
   riposoFisso: boolean;
   stagionaleFinoAlMese?: number;
+  /** forma contrattuale per la busta paga (vedi contratti.ts):
+   *  indeterminato | determinato | apprendistato | intermittente |
+   *  stagionale | somministrazione. Default: indeterminato. */
+  tipoContrattuale?: string;
+  /** quota delle ore reali NON messa in busta (0 = tutto in chiaro,
+   *  1 = tutto in nero). Sostituisce il solo booleano inRegola. */
+  quotaNero?: number;
+  /** orario su cui è stata costruita l'offerta (per l'anteprima) */
+  orario?: Orario;
 }
 
 export interface EsitoOfferta {
@@ -357,20 +374,42 @@ export interface EsitoOfferta {
 
 export function valutaOfferta(c: Candidato, o: Offerta, rng: () => number): EsitoOfferta {
   const p = c.pretese;
-  if (!o.inRegola && !p.accettaNero)
-    return { accettata: false, motivo: `${c.nome} non lavora senza contratto.`, moraleIniziale: 0 };
+  const quotaNero = o.quotaNero ?? (o.inRegola ? 0 : 1);
+  const orario = o.orario ?? { oreFeriali: 24, oreFestive: 16 };
+
+  // Una quota piccola fuori busta la accettano quasi tutti; il rifiuto
+  // scatta quando il contratto sparisce o quasi.
+  if (quotaNero > 0.15 && !p.accettaNero) {
+    return {
+      accettata: false,
+      motivo: quotaNero >= 0.85
+        ? `${c.nome} non lavora senza contratto.`
+        : `${c.nome} non ci sta: ${Math.round(quotaNero * 100)}% fuori busta significa contributi e malattia a metà.`,
+      moraleIniziale: 0,
+    };
+  }
   if (p.vuoleRiposoFisso && !o.riposoFisso && rng() < 0.7)
     return { accettata: false, motivo: `${c.nome} ha bisogno di un giorno di riposo fisso.`, moraleIniziale: 0 };
   if (p.contratto === "full_regolare" && o.contratto === "stagionale" && rng() < 0.75)
     return { accettata: false, motivo: `${c.nome} cerca continuità, non un contratto estivo.`, moraleIniziale: 0 };
 
-  const gap = o.superminimo - p.superminimoMinimo;
-  if (gap < -0.12)
-    return { accettata: false, motivo: `Offerta troppo bassa: ${c.nome} chiede almeno il ${Math.round((p.superminimoMinimo - 1) * 100)}% sopra il minimo.`, moraleIniziale: 0 };
-  if (gap < 0 && rng() < 0.5)
-    return { accettata: false, motivo: `${c.nome} ci ha pensato ma ha rifiutato: paga sotto le aspettative.`, moraleIniziale: 0 };
+  // Il candidato guarda quello che porta a casa, non il moltiplicatore CCNL.
+  const nettoOfferto = anteprimaOfferta(c.ruolo, o.superminimo, orario, quotaNero).nettoTotale;
+  const voluto = p.nettoDesiderato > 0 ? p.nettoDesiderato : nettoDesiderato(c.ruolo, p.superminimoMinimo);
+  const gapNetto = voluto > 0 ? (nettoOfferto - voluto) / voluto : 0;
 
-  const morale = Math.max(35, Math.min(90, 60 + gap * 120 + (o.inRegola ? 5 : -10)));
+  if (gapNetto < -0.10)
+    return {
+      accettata: false,
+      motivo: `Offerta troppo bassa: ${c.nome} vuole almeno ${Math.round(voluto)}€ netti al mese, ` +
+        `qui ne porta a casa ${Math.round(nettoOfferto)}.`,
+      moraleIniziale: 0,
+    };
+  if (gapNetto < 0 && rng() < 0.5)
+    return { accettata: false, motivo: `${c.nome} ci ha pensato ma ha rifiutato: sotto le aspettative di ${Math.round(voluto - nettoOfferto)}€ netti.`, moraleIniziale: 0 };
+
+  const gap = gapNetto;
+  const morale = Math.max(35, Math.min(90, 60 + gap * 150 + (quotaNero > 0.5 ? -12 : quotaNero > 0 ? -4 : 5)));
   return {
     accettata: true,
     motivo: gap >= 0.1 ? `${c.nome} accetta con entusiasmo!` : gap >= 0 ? `${c.nome} accetta.` : `${c.nome} accetta, ma non è convinto della paga.`,
@@ -382,6 +421,7 @@ export function valutaOfferta(c: Candidato, o: Offerta, rng: () => number): Esit
 export function assumi(c: Candidato, o: Offerta, esito: EsitoOfferta): DipendenteEsteso & {
   stile: Stile; tratti: Tratto[]; famiglia: Famiglia; formazione: Formazione;
   ruoloEsteso: RuoloEsteso; adattamentoStile: number; stagionaleFinoAlMese?: number;
+  tipoContrattuale: string; quotaNero: number;
 } {
   // ruolo mappato su quelli che il motore paga (CCNL semplificato)
   const mappa: Record<RuoloEsteso, DipendenteEsteso["ruolo"]> = {
@@ -396,6 +436,8 @@ export function assumi(c: Candidato, o: Offerta, esito: EsitoOfferta): Dipendent
     stile: c.stile, tratti: c.tratti, famiglia: c.famiglia, formazione: c.formazione,
     ruoloEsteso: c.ruolo, adattamentoStile: 0, // cresce mese dopo mese
     stagionaleFinoAlMese: o.stagionaleFinoAlMese,
+    tipoContrattuale: o.tipoContrattuale ?? "indeterminato",
+    quotaNero: o.quotaNero ?? (o.inRegola ? 0 : 1),
   };
 }
 
