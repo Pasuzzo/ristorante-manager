@@ -20,6 +20,7 @@
 
 import { DipendenteEsteso, Attributi } from "./reputazione.ts";
 import { anteprimaOfferta, nettoDesiderato, Orario } from "./contratti.ts";
+import { repertorioIniziale } from "./ricette.ts";
 
 // ─────────────────────────────────────────────── Ruoli
 
@@ -170,6 +171,8 @@ export interface Candidato {
   lordoBaseMensile: number;
   /** affidabilità vera 0-100: al colloquio non si vede quasi per niente */
   affidabilita: number;
+  /** i piatti che sa fare davvero (vuoto per chi non è di cucina) */
+  repertorio: string[];
   /** attributi mostrati al giocatore come forbice (incertezza) */
   vetrina: {
     attributi: Record<keyof Attributi, [number, number]>;
@@ -207,10 +210,34 @@ export interface OpzioniMercato {
   pressioneStagionale?: number; // 1 = normale, 1.3 = agosto
 }
 
+/**
+ * Finestre di età per mansione. Nessuno arriva maitre a vent'anni:
+ * quei ruoli si raggiungono dopo anni di sala o di cucina.
+ */
+export const FINESTRA_ETA: Record<string, [number, number]> = {
+  lavapiatti: [18, 58],
+  runner: [18, 27],
+  commis: [18, 30],
+  cameriere: [19, 52],
+  barista: [19, 48],
+  chef_de_rang: [23, 48],
+  sommelier: [26, 58],
+  maitre: [30, 62],
+  direttore: [32, 62],
+  cuoco: [22, 56],
+  pizzaiolo: [20, 56],
+  pasticcere: [22, 56],
+  sous_chef: [26, 48],
+  chef: [30, 62],
+};
+
 export function generaCandidato(id: string, opt: OpzioniMercato, rng: () => number): Candidato {
   const ruolo = opt.ruoliCercati?.length ? pick(opt.ruoliCercati, rng) : pick(Object.keys(REPARTO) as RuoloEsteso[], rng);
   const qualita = opt.qualitaBacino ?? 1;
-  const eta = Math.round(18 + Math.abs(gauss(rng)) * 28);
+  // L'età non è indipendente dal ruolo: un maitre di 20 anni non esiste,
+  // e nemmeno un runner di 55. Ogni mansione ha la sua finestra reale.
+  const [etaMin, etaMax] = FINESTRA_ETA[ruolo] ?? [18, 60];
+  const eta = Math.round(etaMin + Math.abs(gauss(rng)) * (etaMax - etaMin) * 0.85);
 
   // base attributi: cresce con età (esperienza) e qualità del bacino
   const base = 6 + qualita * 4 + Math.min(6, (eta - 18) * 0.25);
@@ -243,9 +270,16 @@ export function generaCandidato(id: string, opt: OpzioniMercato, rng: () => numb
 
   const famiglia = pick(Object.keys(EFFETTI_FAMIGLIA) as Famiglia[], rng);
   const stile = pick(Object.keys(AFFINITA) as Stile[], rng);
-  const pretese = generaPretese(tratti, famiglia, eta, attributi, bf.pretesaPaga, opt.pressioneStagionale ?? 1, rng);
+  const etaFinale = Math.max(etaMin, Math.min(etaMax, eta));
+  const pretese = generaPretese(tratti, famiglia, etaFinale, attributi, bf.pretesaPaga, opt.pressioneStagionale ?? 1, rng);
   // quello che vuole portare a casa: è il numero che il giocatore deve centrare
   pretese.nettoDesiderato = Math.round(nettoDesiderato(ruolo, pretese.superminimoMinimo));
+
+  // Quello che sa cucinare davvero, coerente col suo curriculum
+  const CUCINA_RUOLI = ["cuoco", "chef", "sous_chef", "commis", "pizzaiolo", "pasticcere"];
+  const repertorio = CUCINA_RUOLI.includes(ruolo)
+    ? repertorioIniziale({ eta: etaFinale, tecnica: attributi.tecnica, esperienza: attributi.esperienza, formazione, stile }, rng)
+    : [];
 
   // vetrina: incertezza maggiore per i giovani (meno storico verificabile)
   const incertezza = eta < 25 ? 4 : eta < 35 ? 3 : 2;
@@ -266,7 +300,8 @@ export function generaCandidato(id: string, opt: OpzioniMercato, rng: () => numb
   const incAffid = eta < 25 ? 30 : eta < 40 ? 24 : 18;
 
   return {
-    id, nome: `${pick(NOMI, rng)} ${pick(COGNOMI, rng)}`, eta, ruolo, attributi, stile,
+    id, nome: `${pick(NOMI, rng)} ${pick(COGNOMI, rng)}`, eta: etaFinale, ruolo, attributi, stile,
+    repertorio,
     formazione, tratti, famiglia, pretese,
     affidabilita: affid,
     lordoBaseMensile: Math.round(1_500 * LIVELLO_CCNL[ruolo]),
@@ -421,7 +456,7 @@ export function valutaOfferta(c: Candidato, o: Offerta, rng: () => number): Esit
 export function assumi(c: Candidato, o: Offerta, esito: EsitoOfferta): DipendenteEsteso & {
   stile: Stile; tratti: Tratto[]; famiglia: Famiglia; formazione: Formazione;
   ruoloEsteso: RuoloEsteso; adattamentoStile: number; stagionaleFinoAlMese?: number;
-  tipoContrattuale: string; quotaNero: number;
+  tipoContrattuale: string; quotaNero: number; repertorio: string[]; eta: number;
 } {
   // ruolo mappato su quelli che il motore paga (CCNL semplificato)
   const mappa: Record<RuoloEsteso, DipendenteEsteso["ruolo"]> = {
@@ -438,6 +473,8 @@ export function assumi(c: Candidato, o: Offerta, esito: EsitoOfferta): Dipendent
     stagionaleFinoAlMese: o.stagionaleFinoAlMese,
     tipoContrattuale: o.tipoContrattuale ?? "indeterminato",
     quotaNero: o.quotaNero ?? (o.inRegola ? 0 : 1),
+    repertorio: [...(c.repertorio ?? [])],
+    eta: c.eta,
   };
 }
 
