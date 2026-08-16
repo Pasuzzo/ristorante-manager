@@ -66,10 +66,11 @@ export default function CandidatoCard({ candidato: c, offerto = false, onOffri, 
       </div>
       <div className="rm-card-dark rm-no-radius p-2 mt-2">
         <div className="rm-pixel text-[8px] text-rm-gold uppercase">Pretese</div>
-        <div className="rm-text text-[15px] text-rm-cream mt-1 leading-tight">
+        <div className="rm-pixel text-[13px] text-rm-cream mt-1">Vuole circa {c.pretese.nettoDesiderato} € netti al mese</div>
+        <div className="rm-text text-[13px] text-rm-cream/70 mt-1 leading-tight">
           <div>📋 {CONTRATTI[c.pretese.contratto] ?? c.pretese.contratto}</div>
-          <div>💰 Minimo +{Math.round((c.pretese.superminimoMinimo - 1) * 100)}% · base {money(c.lordoBaseMensile)}/mese</div>
-          <div>{c.pretese.accettaNero ? '✅ accetta nero' : '🚫 solo regolare'} · {c.pretese.vuoleRiposoFisso ? 'riposo fisso' : 'flessibile'}</div>
+          <div>{c.pretese.accettaNero ? '✅ accetta fuori busta' : '🚫 solo busta'} · {c.pretese.vuoleRiposoFisso ? 'riposo fisso' : 'flessibile'}</div>
+          <div className="text-rm-cream/45">superminimo min. +{Math.round((c.pretese.superminimoMinimo - 1) * 100)}% · base {money(c.lordoBaseMensile)}/mese</div>
         </div>
       </div>
       {offerto
