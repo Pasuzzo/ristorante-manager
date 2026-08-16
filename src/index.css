@@ -167,6 +167,11 @@
   .rm-input:focus { border-color: #e8b84b; }
   .rm-shadow { box-shadow: 4px 4px 0 #1a141f; }
   .rm-no-radius { border-radius: 0; }
+
+  /* Safe area per app nativa: tacca e barra gesti */
+  .rm-safe-top { padding-top: env(safe-area-inset-top); }
+  .rm-safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  .rm-safe-px { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
 }
 
 @layer utilities {
@@ -192,6 +197,20 @@ input[type="range"]:focus-visible,
 a:focus-visible {
   outline: 3px solid #e8b84b;
   outline-offset: 2px;
+}
+
+/* Touch: niente hover incollato. Feedback :active immediato (1px/colore). */
+@media (hover: none) and (pointer: coarse) {
+  button:active:not(:disabled),
+  [role="button"]:active:not(:disabled),
+  a:active {
+    filter: brightness(0.9);
+    transform: translateY(1px);
+  }
+  .rm-btn:active {
+    transform: translate(3px, 3px);
+    box-shadow: 1px 1px 0 #1a141f;
+  }
 }
 
 /* Rispetta prefers-reduced-motion: disabilita le animazioni pixel */

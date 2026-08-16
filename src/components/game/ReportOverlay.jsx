@@ -48,7 +48,7 @@ export default function ReportOverlay({ report, onClose, onGameOverChiudi, nomeR
   const violCorr = stato?.controlli?.violazioniCorrispettivi?.length ?? 0;
 
   return (
-    <div className="fixed inset-0 z-50 bg-rm-bg2/80 flex items-start sm:items-center justify-center p-2 overflow-y-auto rm-scroll">
+    <div className="fixed inset-0 z-50 bg-rm-bg2/80 flex items-start sm:items-center justify-center p-2 overflow-y-auto rm-scroll rm-safe-top rm-safe-px">
       <div className="rm-wood rm-no-radius rm-shadow w-full max-w-2xl my-4">
         <div className="rm-tovaglia-red border-b-[4px] border-rm-wood-dark px-3 py-2 flex items-center justify-between">
           <div className="flex items-center gap-2">

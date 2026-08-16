@@ -118,7 +118,7 @@ export default function Partita() {
   useEffect(() => { carica(); }, [id]);
 
   if (loading) {
-    return <div className="min-h-screen flex items-center justify-center rm-text text-[18px] text-rm-cream/70">Caricamento partita…</div>;
+    return <div className="min-h-dvh flex items-center justify-center rm-text text-[18px] text-rm-cream/70">Caricamento partita…</div>;
   }
   if (errore || !partita) {
     return (
@@ -152,9 +152,9 @@ export default function Partita() {
   };
 
   return (
-    <div className="min-h-screen pb-20 max-w-3xl mx-auto">
+    <div className="min-h-dvh rm-safe-top rm-safe-px pb-20 max-w-3xl mx-auto">
       {/* Header */}
-      <header className="rm-wood rm-no-radius rm-shadow p-2 mb-3 sticky top-0 z-30">
+      <header className="rm-wood rm-no-radius rm-shadow p-2 mb-3 sticky top-0 z-30 rm-safe-top rm-safe-px">
         <div className="flex items-center justify-between gap-2">
           <button onClick={() => navigate('/')} aria-label="Torna alle partite" className="rm-pixel text-[10px] text-rm-cream/80">‹ Partite</button>
           <span className="rm-pixel text-[11px] text-rm-cream truncate max-w-[50%]">{partita.nome || stato?.ristorante?.nome}</span>
@@ -216,7 +216,7 @@ export default function Partita() {
       )}
 
       {/* Bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 z-30 rm-card-dark rm-no-radius border-t-[4px] border-rm-wood-dark">
+      <nav className="fixed bottom-0 left-0 right-0 z-30 rm-card-dark rm-no-radius border-t-[4px] border-rm-wood-dark rm-safe-bottom rm-safe-px">
         <div className="max-w-3xl mx-auto grid grid-cols-4 sm:grid-cols-8 lg:grid-cols-11">
           {TABS.map((t) => {
             const on = tab === t.key;

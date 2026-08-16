@@ -89,7 +89,7 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen px-3 py-4 max-w-3xl mx-auto">
+    <div className="min-h-dvh rm-safe-top rm-safe-px px-3 py-4 max-w-3xl mx-auto">
       <header className="rm-wood rm-no-radius rm-shadow p-3 mb-4">
         <div className="flex items-center gap-3">
           <Icon name="chef" size={28} color="#f2e5bc" />

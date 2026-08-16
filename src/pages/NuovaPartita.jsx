@@ -136,7 +136,7 @@ export default function NuovaPartita() {
   const indietro = () => setStep((s) => Math.max(0, s - 1));
 
   return (
-    <div className="min-h-screen px-3 py-4 max-w-2xl mx-auto pb-24">
+    <div className="min-h-dvh rm-safe-top rm-safe-px px-3 py-4 max-w-2xl mx-auto pb-24">
       <header className="rm-wood rm-no-radius rm-shadow p-3 mb-3 flex items-center gap-2">
         <button onClick={() => navigate('/')} className="rm-pixel text-[10px] text-rm-cream/80">‹ Partite</button>
         <Icon name="chef" size={20} color="#f2e5bc" />

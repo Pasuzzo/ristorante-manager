@@ -2,12 +2,19 @@
 module.exports = {
     darkMode: ["class"],
     content: ["./index.html", "./src/**/*.{ts,tsx,js,jsx}"],
+    future: { hoverOnlyWhenSupported: true },
   theme: {
   	extend: {
   		borderRadius: {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'
+  		},
+  		minHeight: {
+  			dvh: '100dvh', svh: '100svh', lvh: '100lvh', screen: '100dvh'
+  		},
+  		height: {
+  			dvh: '100dvh', svh: '100svh', lvh: '100lvh', screen: '100dvh'
   		},
   		colors: {
   			rm: {
