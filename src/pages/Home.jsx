@@ -67,7 +67,7 @@ export default function Home() {
                       {formaLabel(st?.ristorante?.forma)} · {localitaLabel(st?.locale?.tipoLocalita)}
                     </div>
                   </button>
-                  {p.game_over && <Chip color="bg-rm-red">GAME OVER</Chip>}
+                  {p.gameOver && <Chip color="bg-rm-red">GAME OVER</Chip>}
                 </div>
 
                 <div className="grid grid-cols-3 gap-2 mt-3">
@@ -86,7 +86,7 @@ export default function Home() {
                 </div>
 
                 <div className="flex items-center justify-between mt-3 border-t-2 border-rm-wood-dark/40 pt-2">
-                  <span className="rm-text text-[15px] text-rm-wood-dark">{p.turni_giocati} turni giocati</span>
+                  <span className="rm-text text-[15px] text-rm-wood-dark">{p.turniGiocati} turni giocati</span>
                   <div className="flex gap-2">
                     <PixelButton variant="blue" className="text-[9px] py-2 rm-tap" onClick={() => navigate(`/partita/${p.id}`)}>Gioca</PixelButton>
                     <PixelButton variant="wood" className="text-[9px] py-2 rm-tap" aria-label={`Elimina partita ${p.nome}`} onClick={() => { if (confirm('Eliminare questa partita?')) elimina(p.id); }}>Elimina</PixelButton>

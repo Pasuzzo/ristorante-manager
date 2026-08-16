@@ -82,9 +82,9 @@ export default function Partita() {
       const p = await getPartita(id);
       setPartita(p);
       setDecisioni(defaultDecisioni(p.stato));
-      if (p.ultimo_bandi) setBandi(p.ultimo_bandi);
-      if (p.game_over && p.ultimo_report) {
-        setReport(p.ultimo_report);
+      if (p.ultimoReport?.bandi) setBandi(p.ultimoReport.bandi);
+      if (p.gameOver && p.ultimoReport) {
+        setReport(p.ultimoReport);
         setShowReport(true);
       }
     } catch (e) {
@@ -111,28 +111,19 @@ export default function Partita() {
   const saldo = stato?.tesoreria?.saldo ?? 0;
 
   const avanza = async () => {
-    if (avanzando || partita.game_over) return;
+    if (avanzando || partita.gameOver) return;
     setAvanzando(true);
     setErrore('');
     try {
-      const res = await avanzaTurno({
-        partitaId: id,
-        turnoAtteso: (partita.turni_giocati ?? 0) + 1,
-        decisioni,
-      });
-      const agg = await getPartita(id);
+      const res = await avanzaTurno({ partitaId: id, decisioni });
+      const agg = res.salvataggio;
       setPartita(agg);
       setReport(res.report);
       setBandi(res.bandi ?? null);
       setPlayback({ giorni: res.report?.giorni ?? [], mese: res.report?.mese, settimana: res.report?.settimana ?? [] });
       setDecisioni(defaultDecisioni(agg.stato));
     } catch (e) {
-      const msg = e?.response?.data?.error || e?.message || 'Errore';
-      if (msg.includes('Turno') || msg.includes('già')) {
-        await carica();
-      } else {
-        setErrore(msg);
-      }
+      setErrore(e?.message || 'Errore');
     } finally {
       setAvanzando(false);
     }
@@ -193,7 +184,7 @@ export default function Partita() {
       </main>
 
       {/* Avanza mese */}
-      {!partita.game_over && (
+      {!partita.gameOver && (
         <div className="px-2 my-4">
           <PixelButton variant="green" full className="text-[12px] py-3" onClick={avanza} disabled={avanzando}>
             {avanzando ? 'Elaborazione…' : `▶ Avanza a ${nomeMese((stato?.mese ?? 1) + 1)}`}

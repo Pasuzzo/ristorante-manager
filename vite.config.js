@@ -15,5 +15,10 @@ export default defineConfig({
       visualEditAgent: true
     }),
     react(),
-  ]
+  ],
+  define: {
+    // gioco.ts ha un self-check Node-only (`process.argv`): in browser è undefined,
+    // lo si sostituisce con [] così il guard non lancia e demo() non parte.
+    'process.argv': JSON.stringify([]),
+  },
 });
