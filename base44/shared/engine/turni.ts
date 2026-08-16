@@ -125,12 +125,12 @@ export function grigliaIniziale(
   giornoChiusura = 1,
 ): Griglia {
   const g = grigliaVuota();
-  const inCucina = staff.filter((d) => repartoDi(d.ruolo) === "cucina").length;
-  // Con una brigata piccola non si reggono 7 cene più i pranzi: si apre
-  // meno. È la prima lezione del gioco, e va data con un default onesto.
-  const giorniChiusi = new Set<number>([giornoChiusura]);
-  if (inCucina < 2) giorniChiusi.add((giornoChiusura + 1) % 7);
+  const cucina = staff.filter((d) => repartoDi(d.ruolo) === "cucina");
+  const sala = staff.filter((d) => repartoDi(d.ruolo) !== "cucina");
   const pranziWeekend = staff.length >= 5;
+  const giorniChiusi = new Set<number>([giornoChiusura]);
+  if (cucina.length < 2) giorniChiusi.add((giornoChiusura + 1) % 7);
+  let giro = 0;
 
   for (let dow = 0; dow < 7; dow++) {
     const chiuso = giorniChiusi.has(dow);
@@ -138,7 +138,16 @@ export function grigliaIniziale(
       const sp = g[dow][s];
       sp.aperto = !chiuso && (s === "cena" || (pranziWeekend && (dow === 0 || dow === 6)));
       if (!sp.aperto) { sp.turni = []; continue; }
-      sp.turni = staff.map((d) => ({
+      // A ogni servizio va solo chi serve, a rotazione: mettere tutti in
+      // tutti i turni significa pagare straordinari e tenere gente ferma.
+      const nCucina = Math.min(cucina.length, s === "cena" ? 2 : 1);
+      const nSala = Math.min(sala.length, s === "cena" ? 2 : 1);
+      const scelti = [
+        ...Array.from({ length: nCucina }, (_, k) => cucina[(giro + k) % Math.max(1, cucina.length)]),
+        ...Array.from({ length: nSala }, (_, k) => sala[(giro + k) % Math.max(1, sala.length)]),
+      ].filter(Boolean);
+      giro++;
+      sp.turni = scelti.map((d) => ({
         idDipendente: d.id,
         oraArrivo: sp.oraApertura - ANTICIPO_DEFAULT[repartoDi(d.ruolo)],
       }));
@@ -391,4 +400,4 @@ export function demo(): void {
   console.log("turni.ts — self-check OK");
 }
 
-if (typeof process !== "undefined" && import.meta.url === `file://${process.argv[1]}`) demo();
+if (import.meta.url === `file://${process.argv[1]}`) demo();

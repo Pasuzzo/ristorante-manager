@@ -216,7 +216,7 @@ export function aggiornaReputazione(
 // ─────────────────────────────────────────────── Coperti servibili
 
 /** Oltre questo moltiplicatore della capacità, i clienti vengono respinti. */
-export const MAX_OVERBOOKING = 1.25;
+export const MAX_OVERBOOKING = 1.05;
 
 /**
  * La domanda arriva dal generatore ricavi, ma servi solo chi riesci a servire:

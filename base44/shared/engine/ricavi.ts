@@ -187,12 +187,13 @@ export function generaRicaviMese(
   eventi.push(...macro.note);
   const fPrezzo = Math.pow(locale.listino, locale.elasticitaPrezzo);
   const fMkt = fattoreMarketing(mkt);
-  const fRep = 0.7 + 0.6 * reputazione;
+  const fRep = 0.55 + 1.15 * reputazione;
   const fStagione = STAGIONALITA[locale.tipoLocalita][mese - 1];
 
   // inflazione cumulata: scontrino cresce col listino e coi prezzi generali
   const indice = locale.indicePrezziMenu ?? Math.pow(1 + cfg.inflazioneAnnua, annoDiGioco - 1);
-  const scontrino = locale.scontrinoMedioBase * locale.listino * indice;
+  const fScontrinoRep = 0.88 + 0.35 * reputazione;
+  const scontrino = locale.scontrinoMedioBase * locale.listino * indice * fScontrinoRep;
 
   let copertiTotali = 0;
   let giorniApertura = 0;
