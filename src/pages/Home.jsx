@@ -98,9 +98,12 @@ export default function Home() {
         </div>
       </header>
 
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2 gap-2">
         <h2 className="rm-pixel text-[12px] text-rm-cream text-balance">LE TUE PARTITE</h2>
-        <PixelButton variant="green" className="text-[10px] py-2 rm-tap" onClick={() => navigate('/nuova')}>+ Nuova partita</PixelButton>
+        <div className="flex gap-2">
+          <PixelButton variant="green" className="text-[10px] py-2 rm-tap" onClick={() => navigate('/nuova')}>+ Nuova partita</PixelButton>
+          <PixelButton variant="wood" className="text-[10px] py-2 rm-tap" aria-label="Esci" onClick={() => base44.auth.logout('/login')}>Esci</PixelButton>
+        </div>
       </div>
 
       {errore && <div className="rm-card-dark rm-no-radius p-2 mb-3 text-rm-red rm-text text-[16px]">{errore}</div>}
