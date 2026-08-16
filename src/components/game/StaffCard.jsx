@@ -1,8 +1,29 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { SegmentedBar, MoraleFace, Chip, PixelButton } from '@/components/game/ui';
 import { ruoloLabel, livelloLabel, repartoDi, lordoMensile } from '@/lib/gameData';
 import { money } from '@/lib/partita';
 import { copertiEffettivi } from '../../../base44/shared/engine/turni';
+import { RICETTE_BASE } from '../../../base44/shared/engine/ricette';
+
+const CUCINA_ESTESO = new Set(['cuoco', 'chef', 'sous_chef', 'commis', 'pizzaiolo', 'pasticcere']);
+const NOME_BY_ID = Object.fromEntries(RICETTE_BASE.map((r) => [r.id, r.nome]));
+
+function Repertorio({ repertorio }) {
+  const [aperto, setAperto] = useState(false);
+  const n = repertorio.length;
+  return (
+    <button type="button" onClick={() => setAperto((v) => !v)} className="block w-full text-left mt-1">
+      <div className="rm-pixel text-[8px] text-rm-wood-dark">
+        🍳 {n} piatti in repertorio <span className="text-rm-bg">{aperto ? '▲' : '▼'}</span>
+      </div>
+      {aperto && (
+        <div className="rm-text text-[15px] text-rm-bg/80 leading-tight mt-1">
+          {n === 0 ? 'nessun piatto noto' : repertorio.map((id) => NOME_BY_ID[id] ?? id).join(' · ')}
+        </div>
+      )}
+    </button>
+  );
+}
 
 function Attr({ label, value }) {
   const color = value >= 12 ? '#5a8c46' : value >= 8 ? '#e8b84b' : '#c8443c';
@@ -32,11 +53,12 @@ export default function StaffCard({
         <div>
           <div className="rm-pixel text-[12px] text-rm-bg">{d.nome}</div>
           <div className="rm-text text-[16px] text-rm-wood-dark leading-none">
-            {ruoloLabel(d.ruolo)} · {reparto}
+            {ruoloLabel(d.ruolo)} · {reparto}{d.eta != null ? ` · ${d.eta} anni` : ''}
           </div>
           <div className="rm-text text-[14px] text-rm-wood-dark leading-none mt-[2px]">
             copre <span className="rm-pixel text-[9px] text-rm-bg">{coperti}</span> coperti a servizio
           </div>
+          {d.ruoloEsteso && CUCINA_ESTESO.has(d.ruoloEsteso) && <Repertorio repertorio={d.repertorio ?? []} />}
         </div>
         <div className="flex flex-col items-end gap-1">
           <Chip color={d.inRegola ? 'bg-rm-green' : 'bg-rm-red'}>

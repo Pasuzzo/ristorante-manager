@@ -1,10 +1,31 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Chip, PixelButton } from '@/components/game/ui';
 import { RUOLI_ESTESI, STILI, FORMAZIONI, FAMIGLIE, CONTRATTI } from '@/lib/gameData';
 import { money } from '@/lib/partita';
+import { RICETTE_BASE } from '../../../base44/shared/engine/ricette';
 
 const ATTR_LABELS = { tecnica: 'Tecnica', velocita: 'Velocità', cortesia: 'Cortesia', resistenza: 'Resistenza', esperienza: 'Esp.' };
 const TRATTO_BG = { pregio: '#5a8c46', difetto: '#c8443c', neutro: '#3c5a8c' };
+
+const CUCINA = new Set(['cuoco', 'chef', 'sous_chef', 'commis', 'pizzaiolo', 'pasticcere']);
+const NOME_BY_ID = Object.fromEntries(RICETTE_BASE.map((r) => [r.id, r.nome]));
+
+function Repertorio({ repertorio }) {
+  const [aperto, setAperto] = useState(false);
+  const n = repertorio.length;
+  return (
+    <button type="button" onClick={() => setAperto((v) => !v)} className="block w-full text-left mt-1">
+      <div className="rm-pixel text-[8px] text-rm-wood-dark">
+        🍳 {n} piatti in repertorio <span className="text-rm-bg">{aperto ? '▲' : '▼'}</span>
+      </div>
+      {aperto && (
+        <div className="rm-text text-[15px] text-rm-bg/80 leading-tight mt-1">
+          {n === 0 ? 'nessun piatto noto' : repertorio.map((id) => NOME_BY_ID[id] ?? id).join(' · ')}
+        </div>
+      )}
+    </button>
+  );
+}
 
 /** Barra AFFIDABILITÀ: forbice larga tratteggiata. È il dato più importante
  *  e il più incerto: al colloquio si intuisce poco. */
@@ -58,6 +79,7 @@ export default function CandidatoCard({ candidato: c, offerto = false, onOffri, 
         <div>🍽️ {STILI[c.stile] ?? c.stile}</div>
         <div>🏠 {FAMIGLIE[c.famiglia] ?? c.famiglia}</div>
       </div>
+      {c.ruolo && CUCINA.has(c.ruolo) && <Repertorio repertorio={c.repertorio ?? []} />}
       <div className="flex flex-wrap gap-1 mt-2">
         {v.trattiVisibili.map((t) => (
           <span key={t.id} className="rm-chip" style={{ backgroundColor: TRATTO_BG[t.tipo] }}>{t.nome}</span>

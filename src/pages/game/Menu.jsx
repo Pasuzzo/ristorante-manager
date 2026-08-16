@@ -26,6 +26,10 @@ export default function MenuPage({ stato, decisioni, setDecisioni }) {
   const tecnicaBrigata = (stato?.staff ?? []).filter((d) => ['commis', 'cuoco', 'chef'].includes(d.ruolo))
     .reduce((m, d) => Math.max(m, d.attributi?.tecnica ?? 0), 3);
 
+  // repertorio della brigata: i piatti che qualcuno in cucina sa davvero fare
+  const saFare = new Set();
+  for (const d of stato?.staff ?? []) for (const id of d.repertorio ?? []) saFare.add(id);
+
   return (
     <div className="space-y-3">
       <PixelPanel title={`Menu (${menu.length} piatti)`} icon="fork">
@@ -47,8 +51,9 @@ export default function MenuPage({ stato, decisioni, setDecisioni }) {
                 const eseguibile = gap >= -2;
                 const avviso = !eseguibile ? 'OLTRE LA BRIGATA' : gap < 0 ? 'esce male' : '';
                 const prezzo = menu.find((m) => m.id === r.id)?.prezzoVendita ?? r.prezzoVendita;
+                const noto = saFare.has(r.id);
                 return (
-                  <div key={r.id} className="rm-card rm-no-radius p-2">
+                  <div key={r.id} className={`rm-card rm-no-radius p-2 ${noto ? '' : 'opacity-50'}`}>
                     <div className="flex items-start justify-between gap-2">
                       <button onClick={() => eseguibile && toggle(r)} className="text-left flex-1 min-w-0">
                         <div className="flex items-center gap-2">
@@ -58,6 +63,9 @@ export default function MenuPage({ stato, decisioni, setDecisioni }) {
                         <div className="rm-text text-[15px] text-rm-wood-dark leading-none mt-1">
                           diff. {r.difficolta} · pop. {r.popolarita} · {r.ingredienti.length} ingr.
                         </div>
+                        {!noto && (
+                          <div className="rm-pixel text-[8px] text-rm-red mt-1">🔒 nessuno in cucina lo sa preparare</div>
+                        )}
                       </button>
                       {avviso && <Chip color={eseguibile ? 'bg-rm-gold' : 'bg-rm-red'}>{avviso}</Chip>}
                     </div>
