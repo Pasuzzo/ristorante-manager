@@ -60,7 +60,7 @@ function Casella({ g, max, attivo, mostrato }) {
   );
 }
 
-export default function CalendarStrip({ giorni = [], nomeMese = '', onFine, decisioniModificate = 0, settimana = [], onApriGriglia }) {
+export default function CalendarStrip({ giorni = [], nomeMese = '', onFine, decisioniModificate = 0, settimana = [], onApriGriglia, anteprima }) {
   const [indice, setIndice] = useState(0);      // quanti giorni già mostrati
   const [inPlay, setInPlay] = useState(true);
   const [velocita, setVelocita] = useState(0);
@@ -167,6 +167,22 @@ export default function CalendarStrip({ giorni = [], nomeMese = '', onFine, deci
                 Apri griglia
               </PixelButton>
             </div>
+            {anteprima && (
+              <div className="rm-card-dark rm-no-radius p-1 mb-2 grid grid-cols-3 gap-1 text-center">
+                <div>
+                  <div className="rm-pixel text-[6px] text-rm-cream/60 uppercase">Anteprima coperti</div>
+                  <div className="rm-pixel text-[10px] text-rm-green">{anteprima.coperti.toLocaleString('it-IT')}</div>
+                </div>
+                <div>
+                  <div className="rm-pixel text-[6px] text-rm-cream/60 uppercase">Anteprima ricavi</div>
+                  <div className="rm-pixel text-[10px] text-rm-gold">{money(anteprima.ricavi)}</div>
+                </div>
+                <div>
+                  <div className="rm-pixel text-[6px] text-rm-cream/60 uppercase">Respinti</div>
+                  <div className={`rm-pixel text-[10px] ${anteprima.respinti > 0 ? 'text-rm-red' : 'text-rm-cream/70'}`}>{anteprima.respinti.toLocaleString('it-IT')}</div>
+                </div>
+              </div>
+            )}
             <div className="space-y-1">
               {settimana.map((r) => (
                 <div key={r.giorno} className="rm-card-dark rm-no-radius p-1">

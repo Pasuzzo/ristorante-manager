@@ -4,6 +4,7 @@ import { Icon } from '@/components/game/icons';
 import { PixelButton, StarRating, Money } from '@/components/game/ui';
 import ReportOverlay from '@/components/game/ReportOverlay';
 import CalendarStrip from '@/components/game/CalendarStrip';
+import { gioco } from '@/lib/gioco';
 import Dashboard from '@/pages/game/Dashboard';
 import Titolare from '@/pages/game/Titolare';
 import Staff from '@/pages/game/Staff';
@@ -76,6 +77,27 @@ export default function Partita() {
   const [bandi, setBandi] = useState(null);
   const [playback, setPlayback] = useState(null);
   const [giornoCorrente, setGiornoCorrente] = useState(null);
+  const [anteprima, setAnteprima] = useState(null);
+
+  // In pausa: anteprima live dell'effetto delle decisioni (griglia inclusa)
+  // sui prossimi 7 giorni. simula() non salva e non chiama il server.
+  useEffect(() => {
+    if (!playback || !partita) return undefined;
+    const t = setTimeout(() => {
+      try {
+        const r = gioco.simula(partita, decisioni);
+        const sette = (r.giorni ?? []).slice(0, 7);
+        setAnteprima({
+          coperti: sette.reduce((s, g) => s + (g.copertiServitiGiorno ?? 0), 0),
+          ricavi: sette.reduce((s, g) => s + (g.ricaviGiorno ?? 0), 0),
+          respinti: sette.reduce((s, g) => s + Math.max(0, (g.copertiDomanda ?? 0) - (g.copertiServitiGiorno ?? 0)), 0),
+        });
+      } catch {
+        setAnteprima(null);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [playback, partita, decisioni]);
 
   const carica = async () => {
     try {
@@ -164,6 +186,7 @@ export default function Partita() {
             settimana={playback.settimana}
             onFine={() => { setPlayback(null); setShowReport(true); }}
             onApriGriglia={(g) => { setGiornoCorrente(g); setTab('turni'); }}
+            anteprima={anteprima}
           />
         </div>
       )}
@@ -187,7 +210,7 @@ export default function Partita() {
       {!partita.gameOver && (
         <div className="px-2 my-4">
           <PixelButton variant="green" full className="text-[12px] py-3" onClick={avanza} disabled={avanzando}>
-            {avanzando ? 'Elaborazione…' : `▶ Avanza a ${nomeMese((stato?.mese ?? 1) + 1)}`}
+            {avanzando ? 'Elaborazione…' : `Conferma e avanza → ${nomeMese((stato?.mese ?? 1) + 1)}`}
           </PixelButton>
         </div>
       )}
