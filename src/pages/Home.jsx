@@ -4,7 +4,7 @@ import { PixelButton, StarRating, Chip } from '@/components/game/ui';
 import { Icon } from '@/components/game/icons';
 import { gioco } from '@/lib/gioco';
 import { base44 } from '@/api/base44Client';
-import { eliminaPartita, money, nomeMese } from '@/lib/partita';
+import { eliminaPartita, money, nomeMese, importaPartiteCloud } from '@/lib/partita';
 import { useAuth } from '@/lib/AuthContext';
 
 function dataUltimo(iso) {
@@ -74,6 +74,22 @@ export default function Home() {
       setCloudMsg(`Ripristinate ${res.importate} partite${res.errori ? ` (${res.errori} errori)` : ''}`);
     } catch (e) {
       setCloudMsg('Errore ripristino: ' + (e?.message ?? ''));
+    } finally {
+      setCloudBusy(false);
+    }
+  };
+
+  // Importa nell'elenco locale le partite salvate sul server (es. partite
+  // giocate via backend). Non tocca i salvataggi locali esistenti: ogni
+  // partita cloud diventa una voce giocabile con il suo stesso id.
+  const importaCloud = async () => {
+    setCloudMsg(''); setCloudBusy(true);
+    try {
+      const n = await importaPartiteCloud();
+      await carica();
+      setCloudMsg(n > 0 ? `Importate ${n} partite dal cloud` : 'Nessuna partita trovata sul cloud');
+    } catch (e) {
+      setCloudMsg('Errore import: ' + (e?.message ?? ''));
     } finally {
       setCloudBusy(false);
     }
@@ -157,6 +173,7 @@ export default function Home() {
             <div className="flex gap-2 flex-wrap">
               <PixelButton variant="blue" className="text-[9px] py-2 rm-tap" disabled={cloudBusy} onClick={salvaCloud}>Salva copia online</PixelButton>
               <PixelButton variant="wood" className="text-[9px] py-2 rm-tap" disabled={cloudBusy} onClick={() => { if (confirm('Sovrascrivi le partite locali con il backup cloud?')) ripristinaCloud(); }}>Ripristina da online</PixelButton>
+              <PixelButton variant="green" className="text-[9px] py-2 rm-tap" disabled={cloudBusy} onClick={importaCloud}>Importa partita dal cloud</PixelButton>
             </div>
             {cloudMsg && <div className="rm-text text-[15px] text-rm-gold mt-2">{cloudMsg}</div>}
           </>

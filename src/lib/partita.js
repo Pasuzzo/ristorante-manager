@@ -3,6 +3,7 @@
 
 import { base44 } from '@/api/base44Client';
 import { gioco } from './gioco';
+import { VERSIONE_STATO } from '../../base44/shared/engine/gioco';
 import {
   OMI_ESEMPIO, generaBacheca, generaCatalogoDidattico, annuncioAConfigLocale,
 } from '../../base44/shared/engine/immobili';
@@ -91,6 +92,37 @@ export async function listPartite() {
 
 export async function getPartita(id) {
   return gioco.carica(id);
+}
+
+/**
+ * Importa nell'elenco locale tutte le partite salvate sul server (entità Partita),
+ * escludendo il record di backup globale. Ogni record diventa un salvataggio
+ * giocabile: serve per recuperare una partita creata/giocata via backend.
+ */
+export async function importaPartiteCloud() {
+  const righe = await base44.entities.Partita.list('-updated_date', 50);
+  const reali = (righe ?? []).filter((r) => r.nome && r.nome !== '__cloud_backup__' && r.stato);
+  let importate = 0;
+  for (const r of reali) {
+    const stato = { ...(r.stato || {}), __versione: VERSIONE_STATO };
+    const sv = {
+      id: r.id,
+      nome: r.nome,
+      versione: VERSIONE_STATO,
+      turniGiocati: r.turni_giocati ?? 0,
+      annoGioco: stato.annoGioco ?? 1,
+      mese: stato.mese ?? 1,
+      cassa: stato.tesoreria?.saldo ?? 0,
+      reputazione: stato.reputazione ?? 0,
+      gameOver: !!r.game_over,
+      aggiornatoIl: r.updated_date ?? new Date().toISOString(),
+      stato,
+      ultimoReport: r.ultimo_report,
+    };
+    await gioco.salva(sv);
+    importate++;
+  }
+  return importate;
 }
 
 export async function eliminaPartita(id) {
