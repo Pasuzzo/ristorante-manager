@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { PixelPanel, PixelButton } from '@/components/game/ui';
 import CandidatoCard from '@/components/game/CandidatoCard';
+import OfferModal from '@/components/game/OfferModal';
 import { RUOLI_ESTESI, CONTRATTI } from '@/lib/gameData';
 import { money } from '@/lib/partita';
 
@@ -17,8 +18,14 @@ export default function Mercato({ stato, report, decisioni, setDecisioni }) {
   const annunci = decisioni.annunci ?? [];
   const idOfferti = new Set(offerte.map((o) => o.candidatoId));
   const [annForm, setAnnForm] = useState(null);
+  const [modale, setModale] = useState(null);
 
   const rimuoviOfferta = (id) => setDecisioni((p) => ({ ...p, offerte: (p.offerte ?? []).filter((o) => o.candidatoId !== id) }));
+
+  const confermaOfferta = (off) => {
+    setDecisioni((p) => ({ ...p, offerte: [...(p.offerte ?? []), off] }));
+    setModale(null);
+  };
 
   const apriAnnuncio = () => setAnnForm({ ruolo: 'cameriere', budget: COSTO_ANNUNCIO });
   const confermaAnnuncio = () => {
@@ -51,16 +58,7 @@ export default function Mercato({ stato, report, decisioni, setDecisioni }) {
               <CandidatoCard
                 candidato={c}
                 offerto={idOfferti.has(c.id)}
-                onOffri={() => setDecisioni((p) => ({
-                  ...p,
-                  offerte: [...(p.offerte ?? []), {
-                    candidatoId: c.id,
-                    contratto: c.pretese.contratto,
-                    superminimo: c.pretese.superminimoMinimo,
-                    inRegola: true,
-                    riposoFisso: c.pretese.vuoleRiposoFisso,
-                  }],
-                }))}
+                onOffri={() => setModale(c)}
                 onRimuovi={() => rimuoviOfferta(c.id)}
               />
             </div>
@@ -130,6 +128,13 @@ export default function Mercato({ stato, report, decisioni, setDecisioni }) {
             })}
           </div>
         </PixelPanel>
+      )}
+      {modale && (
+        <OfferModal
+          candidato={modale}
+          onConferma={confermaOfferta}
+          onAnnulla={() => setModale(null)}
+        />
       )}
     </div>
   );
