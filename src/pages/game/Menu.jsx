@@ -1,12 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { PixelPanel, PixelButton, Chip } from '@/components/game/ui';
 import { RICETTE, CATEGORIE, categoriaLabel } from '@/lib/ricette';
+import { ruoloLabel } from '@/lib/gameData';
 import { money } from '@/lib/partita';
+
+const CUCINA = new Set(['cuoco', 'chef', 'sous_chef', 'commis', 'pizzaiolo', 'pasticcere']);
 
 /** Composizione del menu: scegli i piatti e il prezzo di vendita. */
 export default function MenuPage({ stato, decisioni, setDecisioni }) {
   const menu = decisioni.menu ?? [];
   const selezionati = new Set(menu.map((r) => r.id));
+  const [insegna, setInsegna] = useState(null);
 
   const toggle = (ric) => {
     setDecisioni((p) => {
@@ -29,6 +33,13 @@ export default function MenuPage({ stato, decisioni, setDecisioni }) {
   // repertorio della brigata: i piatti che qualcuno in cucina sa davvero fare
   const saFare = new Set();
   for (const d of stato?.staff ?? []) for (const id of d.repertorio ?? []) saFare.add(id);
+
+  const cuochi = (stato?.staff ?? []).filter((d) => CUCINA.has(d.ruoloEsteso ?? d.ruolo));
+
+  const insegnaRicetta = (idRicetta, idDipendente) => {
+    setDecisioni((p) => ({ ...p, insegnaRicette: [...(p.insegnaRicette ?? []), { idDipendente, idRicetta }] }));
+    setInsegna(null);
+  };
 
   return (
     <div className="space-y-3">
@@ -74,6 +85,33 @@ export default function MenuPage({ stato, decisioni, setDecisioni }) {
                         <span className="rm-pixel text-[8px] text-rm-wood-dark uppercase">Prezzo</span>
                         <input type="number" min={1} max={60} className="rm-input py-1 w-24" value={prezzo} onChange={(e) => setPrezzo(r.id, e.target.value)} />
                         <span className="rm-text text-[15px] text-rm-wood-dark">€ IVA inclusa</span>
+                      </div>
+                    )}
+
+                    {!noto && (
+                      <div className="mt-2 border-t-2 border-rm-wood-dark/30 pt-2">
+                        {(decisioni.insegnaRicette ?? []).some((x) => x.idRicetta === r.id) ? (
+                          <div className="rm-chip bg-rm-green w-full text-center">INSEGNAMENTO PIANIFICATO</div>
+                        ) : insegna?.idRicetta === r.id ? (
+                          <div className="space-y-2">
+                            <select
+                              className="rm-input py-1"
+                              value={insegna.idDipendente}
+                              onChange={(e) => setInsegna({ ...insegna, idDipendente: e.target.value })}
+                            >
+                              <option value="">Scegli cuoco…</option>
+                              {cuochi.map((d) => (
+                                <option key={d.id} value={d.id}>{d.nome} · {ruoloLabel(d.ruoloEsteso ?? d.ruolo)}</option>
+                              ))}
+                            </select>
+                            <div className="grid grid-cols-2 gap-2">
+                              <PixelButton variant="green" className="text-[9px] py-2" disabled={!insegna.idDipendente} onClick={() => insegnaRicetta(r.id, insegna.idDipendente)}>Conferma</PixelButton>
+                              <PixelButton variant="wood" className="text-[9px] py-2" onClick={() => setInsegna(null)}>Annulla</PixelButton>
+                            </div>
+                          </div>
+                        ) : (
+                          <PixelButton variant="blue" className="text-[9px] py-2" onClick={() => setInsegna({ idRicetta: r.id, idDipendente: '' })}>Insegna a…</PixelButton>
+                        )}
                       </div>
                     )}
                   </div>

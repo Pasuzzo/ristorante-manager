@@ -36,6 +36,8 @@ function defaultDecisioni(stato) {
     nero: stato?.politicheNero ?? { quotaScontrino: 0, quotaAcquisti: 0, pagaNeroInAssenza: true },
     corsi: [],
     annunci: [],
+    chiamateExtra: [],
+    insegnaRicette: [],
     reparti: stato?.reparti ? {
       budgetCucina: stato.reparti.budgetCucina, budgetSala: stato.reparti.budgetSala,
       responsabileCucina: stato.reparti.responsabileCucina ?? null,

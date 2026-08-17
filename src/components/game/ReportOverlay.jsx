@@ -46,6 +46,8 @@ export default function ReportOverlay({ report, onClose, onGameOverChiudi, nomeR
   // Gli accessi di routine (🚓) non sono ispezioni: restano nel feed normale, non qui.
   const eventiOverlay = (report.eventi ?? []).filter((e) => !e.startsWith('🚓'));
   const violCorr = stato?.controlli?.violazioniCorrispettivi?.length ?? 0;
+  const onlineAttivo = stato?.compiti?.prenotazioni === 'software';
+  const caparra = !!stato?.caparraGruppi;
 
   return (
     <div className="fixed inset-0 z-50 bg-rm-bg2/80 flex items-start sm:items-center justify-center p-2 overflow-y-auto rm-scroll rm-safe-top rm-safe-px">
@@ -66,6 +68,21 @@ export default function ReportOverlay({ report, onClose, onGameOverChiudi, nomeR
           ) : (
             <>
               <ReportGrid report={report} />
+
+              {report.noShow?.coperti > 0 && (
+                <div className="rm-card-dark rm-no-radius p-2 border-2 border-rm-gold">
+                  <div className="rm-pixel text-[10px] text-rm-gold">NO-SHOW</div>
+                  <div className="rm-text text-[17px] text-rm-cream mt-1">
+                    🪑 {report.noShow.coperti} coperti prenotati e mai presentati — {money(Math.round(report.noShow.ricaviPersi))} € persi
+                  </div>
+                  {(!onlineAttivo || !caparra) && (
+                    <div className="rm-text text-[14px] text-rm-cream/70 mt-1 leading-tight">
+                      {!onlineAttivo && '📲 Attiva il gestionale prenotazioni per ridurre i no-show. '}
+                      {!caparra && '💰 Una caparra sui gruppi taglierebbe il problema.'}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {report.ispezione && (
                 <div className="rm-card-dark rm-no-radius p-2 border-2 border-rm-red">
@@ -96,6 +113,66 @@ export default function ReportOverlay({ report, onClose, onGameOverChiudi, nomeR
                   {report.chiusuraAnno.map((riga, i) => (
                     <div key={i} className="rm-text text-[17px] text-rm-cream leading-snug">{riga}</div>
                   ))}
+                </div>
+              )}
+
+              {report.chiamate?.length > 0 && (
+                <div className="rm-card-dark rm-no-radius p-2">
+                  <div className="rm-pixel text-[10px] text-rm-gold mb-1">CHIAMATE INTERMITTENTI</div>
+                  <div className="space-y-1">
+                    {report.chiamate.map((c, i) => (
+                      <div key={i} className="rm-text text-[16px] text-rm-cream flex items-center gap-2">
+                        <span className={c.accettata ? 'text-rm-green' : 'text-rm-red'}>{c.accettata ? '✓' : '✗'}</span>
+                        <span>{c.nome} — {c.accettata ? 'ha accettato' : 'rifiutato'}{c.motivo ? ` (${c.motivo})` : ''}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {report.ricetteImparate?.length > 0 && (
+                <div className="rm-card-dark rm-no-radius p-2">
+                  <div className="rm-pixel text-[10px] text-rm-gold mb-1">RICETTE IMPARATE</div>
+                  <div className="space-y-1">
+                    {report.ricetteImparate.map((r, i) => (
+                      <div key={i} className="rm-text text-[16px] text-rm-cream">👨‍🍳 {r.nome} ha imparato «{r.piatto}»</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {report.serviziProblematici?.length > 0 && (
+                <div className="rm-card-dark rm-no-radius p-2 border-2 border-rm-red">
+                  <div className="rm-pixel text-[10px] text-rm-red mb-1">SERVIZI PROBLEMATICI</div>
+                  <div className="space-y-1">
+                    {report.serviziProblematici.map((s, i) => (
+                      <div key={i} className="rm-text text-[16px] text-rm-cream">
+                        {s.servizio === 'pranzo' ? '🍽️' : '🌙'} Giorno {s.giorno}: {s.problema}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {report.eventiPersonali?.length > 0 && (
+                <div>
+                  <div className="rm-pixel text-[10px] text-rm-cream mb-1">EVENTI DEL PERSONALE</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {report.eventiPersonali.map((ev, i) => {
+                      const dip = (stato?.staff ?? []).find((x) => x.id === ev.dipendenteId);
+                      const nome = dip?.nome ?? '—';
+                      const iniziale = nome.charAt(0).toUpperCase();
+                      return (
+                        <div key={i} className="rm-card rm-no-radius p-2 flex items-start gap-2">
+                          <div className="rm-pixel text-[12px] text-rm-cream bg-rm-wood-dark w-8 h-8 flex items-center justify-center flex-shrink-0">{iniziale}</div>
+                          <div className="min-w-0">
+                            <div className="rm-pixel text-[9px] text-rm-wood-dark">{nome}</div>
+                            <div className="rm-text text-[15px] text-rm-bg leading-tight">{ev.testo}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 

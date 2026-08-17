@@ -28,6 +28,10 @@ export default function Staff({ stato, report, decisioni, setDecisioni, onVaiMer
     });
   };
 
+  const chiama = (idDipendente, giorniPreavviso) => {
+    setDecisioni((p) => ({ ...p, chiamateExtra: [...(p.chiamateExtra ?? []), { idDipendente, giorniPreavviso }] }));
+  };
+
   const costoStaff = staff.reduce((s, d) => s + lordoMensile(d.ruoloEsteso ?? d.ruolo, d.superminimo), 0);
 
   const pendingAumento = (id) => decisioni.aumenti.find((a) => a.id === id)?.superminimo ?? null;
@@ -59,8 +63,10 @@ export default function Staff({ stato, report, decisioni, setDecisioni, onVaiMer
             affidabilita={affidabilita[d.id]}
             onLicenzia={() => toggleLicenzia(d.id)}
             onAumenta={() => aumenta(d.id, d.superminimo)}
+            onChiama={chiama}
             pendingLicenzia={decisioni.licenziamenti.includes(d.id)}
             pendingAumento={pendingAumento(d.id)}
+            pendingChiama={(decisioni.chiamateExtra ?? []).some((c) => c.idDipendente === d.id)}
           />
         ))}
       </div>

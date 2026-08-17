@@ -39,11 +39,13 @@ function Attr({ label, value }) {
 /** Scheda di un dipendente con attributi, morale, TFR e azioni contrattuali. */
 export default function StaffCard({
   dipendente, tfr = 0, busta, assenzeGiorni = 0, ferieMaturate = 0, affidabilita,
-  onLicenzia, onAumenta,
-  pendingLicenzia = false, pendingAumento = null,
+  onLicenzia, onAumenta, onChiama,
+  pendingLicenzia = false, pendingAumento = null, pendingChiama = false,
 }) {
   const d = dipendente;
   const ruolo = d.ruoloEsteso ?? d.ruolo;
+  const [chiamaOpen, setChiamaOpen] = useState(false);
+  const [giorni, setGiorni] = useState(2);
   const reparto = repartoDi(ruolo);
   const lordo = lordoMensile(ruolo, d.superminimo);
   const coperti = Math.round(copertiEffettivi(ruolo, d.attributi?.velocita ?? 10, d.morale ?? 50));
@@ -142,6 +144,27 @@ export default function StaffCard({
           Licenzia
         </PixelButton>
       </div>
+
+      {d.tipoContrattuale === 'intermittente' && onChiama && (
+        <div className="mt-2">
+          {pendingChiama ? (
+            <div className="rm-chip bg-rm-blue w-full text-center">CHIAMATA PIANIFICATA</div>
+          ) : chiamaOpen ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="rm-pixel text-[8px] text-rm-wood-dark uppercase">Preavviso</span>
+                <select className="rm-input py-1 w-24" value={giorni} onChange={(e) => setGiorni(Number(e.target.value))}>
+                  {[0,1,2,3,4,5,6,7].map((g) => <option key={g} value={g}>{g}g</option>)}
+                </select>
+                <PixelButton variant="blue" className="text-[9px] py-2 flex-1" onClick={() => { onChiama(d.id, giorni); setChiamaOpen(false); }}>Conferma</PixelButton>
+              </div>
+              <PixelButton variant="wood" full className="text-[9px] py-1" onClick={() => setChiamaOpen(false)}>Annulla</PixelButton>
+            </div>
+          ) : (
+            <PixelButton variant="blue" full className="text-[9px] py-2" onClick={() => setChiamaOpen(true)}>Chiama</PixelButton>
+          )}
+        </div>
+      )}
     </div>
   );
 }
