@@ -23,6 +23,12 @@ function fmtTime(dec) {
   const m = Math.round((dec - h) * 60);
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
+function parseTime(txt) {
+  if (!txt || typeof txt !== 'string') return null;
+  const [h, m] = txt.split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h + m / 60;
+}
 
 function grigliaVuota() {
   return Array.from({ length: 7 }, () => ({
@@ -97,9 +103,11 @@ function BarraPrep({ rapporto, label }) {
   );
 }
 
-function CellServizio({ giorno, sv, sp, staff, copertiAttesi, complessita, onChange, locked }) {
+function CellServizio({ giorno, sv, sp, staff, copertiAttesi, complessita, onChange, locked, consiglio }) {
   const F = FINESTRE[sv];
   const [aggiungi, setAggiungi] = useState('');
+  const cCucina = parseTime(consiglio?.cucina);
+  const cSala = parseTime(consiglio?.sala);
   if (!sp) return <div className="min-w-[150px]" />;
   if (locked) {
   return (
@@ -163,6 +171,10 @@ function CellServizio({ giorno, sv, sp, staff, copertiAttesi, complessita, onCha
               {sp.turni.map((t) => {
                 const d = staff.find((x) => x.id === t.idDipendente);
                 if (!d) return null;
+                const reparto = repartoDi(d.ruoloEsteso ?? d.ruolo);
+                const consiglioDec = reparto === 'cucina' ? cCucina : cSala;
+                const anticipo = consiglioDec != null ? consiglioDec - t.oraArrivo : 0;
+                const aVuoto = anticipo > 0.5;
                 return (
                   <div key={t.idDipendente} className="rm-card-dark rm-no-radius p-2">
                     <div className="flex items-center justify-between gap-1">
@@ -179,8 +191,16 @@ function CellServizio({ giorno, sv, sp, staff, copertiAttesi, complessita, onCha
                         onChange={(e) => setArrivo(t.idDipendente, parseFloat(e.target.value))}
                         className="w-full"
                       />
-                      <span className="rm-pixel text-[10px] text-rm-gold w-[40px]">{fmtTime(t.oraArrivo)}</span>
+                      <span className={`rm-pixel text-[10px] w-[40px] ${aVuoto ? 'text-rm-gold' : 'text-rm-gold'}`}>{fmtTime(t.oraArrivo)}</span>
                     </div>
+                    {consiglio && (
+                      <div className="rm-text text-[13px] text-rm-cream/60 leading-tight mt-1">
+                        consigliato cucina {consiglio.cucina ?? '—'} · sala {consiglio.sala ?? '—'}
+                      </div>
+                    )}
+                    {aVuoto && (
+                      <div className="rm-pixel text-[8px] text-rm-gold mt-1">⏳ ore pagate a vuoto</div>
+                    )}
                   </div>
                 );
               })}
@@ -233,6 +253,13 @@ export default function Turni({ stato, report, decisioni, setDecisioni, giornoCo
   const copertiAttesi = Math.round((stato?.locale?.postiASedere ?? 40) * (stato?.locale?.turniMax ?? 2.2));
   const complessita = Math.min(1, (stato?.menu?.length ?? 0) / 18);
 
+  const orariMap = useMemo(() => {
+    const m = {};
+    for (const o of report?.orariConsigliati ?? []) m[`${o.dow}-${o.servizio}`] = o;
+    return m;
+  }, [report?.orariConsigliati]);
+  const domandaPersa = report?.domandaPersaChiusure ?? null;
+
   const costoMensile = useMemo(
     () => Object.values(buste).reduce((s, b) => s + (b.costoAzienda ?? 0), 0),
     [buste],
@@ -259,6 +286,13 @@ export default function Turni({ stato, report, decisioni, setDecisioni, giornoCo
 
   return (
     <div className="space-y-3">
+      {domandaPersa && domandaPersa.serviziAperti < 10 && (
+        <div className="rm-wood rm-no-radius rm-shadow p-2">
+          <div className="rm-pixel text-[10px] text-rm-cream">
+            {domandaPersa.serviziAperti}/14 servizi aperti — perdi {domandaPersa.coperti} coperti al mese ({money(domandaPersa.ricaviPersi)})
+          </div>
+        </div>
+      )}
       <PixelPanel title="Settimana" icon="cal">
         <div className="grid grid-cols-2 gap-2">
           <Stat label="Costo/sett." value={money(costoSettimanale)} icon="coin" />
@@ -322,6 +356,7 @@ export default function Turni({ stato, report, decisioni, setDecisioni, giornoCo
                     copertiAttesi={copertiAttesi}
                     complessita={complessita}
                     locked={dowLocked(dow)}
+                    consiglio={orariMap[`${dow}-pranzo`]}
                     onChange={(cell) => setCell(dow, 'pranzo', cell)}
                   />
                 </div>
@@ -335,6 +370,7 @@ export default function Turni({ stato, report, decisioni, setDecisioni, giornoCo
                     copertiAttesi={copertiAttesi}
                     complessita={complessita}
                     locked={dowLocked(dow)}
+                    consiglio={orariMap[`${dow}-cena`]}
                     onChange={(cell) => setCell(dow, 'cena', cell)}
                   />
                 </div>
