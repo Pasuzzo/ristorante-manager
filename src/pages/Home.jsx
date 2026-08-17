@@ -119,7 +119,7 @@ export default function Home() {
       <div className="flex items-center justify-between mb-2 gap-2">
         <h2 className="rm-pixel text-[12px] text-balance">LE TUE PARTITE</h2>
         <div className="flex gap-2">
-          <PixelButton variant="green" className="text-[10px] rm-tap py-1" onClick={() => navigate('/nuova')}>+ Nuova partita</PixelButton>
+          <PixelButton variant="green" className="text-[10px] rm-tap pt-1 pb-1 pl-2" onClick={() => navigate('/nuova')}>+ Nuova partita</PixelButton>
           <PixelButton variant="wood" className="text-[10px] py-2 rm-tap" aria-label="Esci" onClick={() => base44.auth.logout('/login')}>Esci</PixelButton>
         </div>
       </div>
