@@ -4,6 +4,7 @@ import { Icon } from '@/components/game/icons';
 import { PixelButton, StarRating, Money } from '@/components/game/ui';
 import ReportOverlay from '@/components/game/ReportOverlay';
 import CalendarStrip from '@/components/game/CalendarStrip';
+import BottomNav from '@/components/game/BottomNav';
 import { gioco } from '@/lib/gioco';
 import Dashboard from '@/pages/game/Dashboard';
 import Titolare from '@/pages/game/Titolare';
@@ -218,19 +219,7 @@ export default function Partita() {
       )}
 
       {/* Bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 z-30 rm-card-dark rm-no-radius border-t-[4px] border-rm-wood-dark rm-safe-bottom rm-safe-px">
-        <div className="max-w-3xl mx-auto grid grid-cols-4 sm:grid-cols-8 lg:grid-cols-11">
-          {TABS.map((t) => {
-            const on = tab === t.key;
-            return (
-              <button key={t.key} onClick={() => setTab(t.key)} aria-label={t.label} aria-current={on ? 'page' : undefined} className="rm-tap py-2 flex flex-col items-center gap-1 w-full">
-                <Icon name={t.icon} size={18} color={on ? '#e8b84b' : '#f2e5bc'} />
-                <span className={`rm-pixel text-[7px] ${on ? 'text-rm-gold' : 'text-rm-cream/70'}`}>{t.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
+      <BottomNav tabs={TABS} tab={tab} setTab={setTab} />
 
       {showReport && (
         <ReportOverlay
