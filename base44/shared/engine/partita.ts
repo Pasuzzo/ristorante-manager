@@ -21,7 +21,7 @@ import {
   aggiornaMorale, gradimentoMese, aggiornaReputazione, aggiornaLocale,
   ScelteGestione, QualitaMaterie, Servizio, FOOD_COST,
 } from "./reputazione.ts";
-import { Ricetta, analizzaMenu } from "./ricette.ts";
+import { Ricetta, analizzaMenu, imparaRicetta, repertorioBrigata, RICETTE_BASE } from "./ricette.ts";
 import {
   StatoMacro, DatiPartenza, inizializzaMacro, avanzaMacro,
   inflazioneMensile, inflazioneAlimentareMensile, fattoreDomanda,
@@ -194,6 +194,10 @@ export interface DecisioniMese {
   caparraGruppi?: boolean;
   /** id dei bandi per cui presentare domanda questo mese */
   domandeBandi?: string[];
+  /** convocazioni degli extra: possono rifiutare */
+  chiamateExtra?: Array<{ idDipendente: string; giorniPreavviso: number }>;
+  /** un cuoco insegna un piatto a un altro (o lo si manda a impararlo) */
+  insegnaRicette?: Array<{ idDipendente: string; idRicetta: string }>;
   /** investimento dichiarato nella domanda: viene comunque limitato a
    *  quello che puoi documentare con fatture */
   investimentoDichiarato?: number;
@@ -265,6 +269,12 @@ export interface ReportMese {
   scadenze: Scadenza[];
   usciteProiettate: Array<{ mesiAvanti: number; mese: number; totale: number }>;
   consigli: Consiglio[];
+  /** no-show del mese: prenotazioni non presentate */
+  noShow: { coperti: number; ricaviPersi: number };
+  /** esiti delle convocazioni degli extra */
+  chiamate: Array<{ nome: string; accettata: boolean; motivo: string }>;
+  /** piatti imparati questo mese */
+  ricetteImparate: Array<{ nome: string; piatto: string }>;
   /** eventi locali del mese */
   eventiCalendario: EventoMese[];
   /** sforamenti di budget da gestire */
@@ -696,8 +706,28 @@ export function avanzaMese(
     velocita: d.attributi.velocita,
     morale: d.morale,
   }));
+  // ── Convocazione degli extra: possono dire di no, e te ne accorgi tardi
+  const chiamate: ReportMese["chiamate"] = [];
+  const extraRifiutati = new Set<string>();
+  for (const ch of dec.chiamateExtra ?? []) {
+    const d = s.staff.find((x) => x.id === ch.idDipendente) as any;
+    if (!d) continue;
+    const esito = chiamaExtra(
+      { nome: d.nome, famiglia: d.famiglia, morale: d.morale },
+      s.reparti.affidabilita[d.id] ?? 50,
+      Math.max(0, ch.giorniPreavviso ?? 3),
+      s.mese >= 6 && s.mese <= 8 ? "cena" : "cena",
+      6,
+      rng,
+    );
+    chiamate.push({ nome: d.nome, accettata: esito.accettata, motivo: esito.motivo });
+    eventi.push(`${esito.accettata ? "📞" : "📵"} ${esito.motivo}`);
+    if (!esito.accettata) extraRifiutati.add(d.id);
+    else d.morale = Math.min(95, d.morale + (ch.giorniPreavviso <= 1 ? 3 : 1));
+  }
+
   // ── I servizi della settimana tipo, applicati ai giorni del mese
-  const inTurno: PersonaInTurno[] = operativi.map((d: any) => ({
+  const inTurno: PersonaInTurno[] = operativi.filter((d: any) => !extraRifiutati.has(d.id)).map((d: any) => ({
     id: d.id, nome: d.nome, ruolo: d.ruoloEsteso ?? d.ruolo,
     velocita: d.attributi.velocita, resistenza: d.attributi.resistenza, morale: d.morale,
   }));
@@ -789,7 +819,27 @@ export function avanzaMese(
       eventi.push(`⏱️ Straordinari per coprire ${recuperabili} coperti: la squadra regge, ma si stanca.`);
     }
   }
+  // ── No-show: tavolo tenuto, personale convocato, nessuno che arriva.
+  //    La caparra sui gruppi e le prenotazioni online li riducono.
+  const cfgPren: ConfigPrenotazioni = {
+    online: s.compiti.prenotazioni === "software",
+    caparraGruppi: !!s.caparraGruppi,
+    zona: (s.immobile as any)?.zona ?? "semicentro",
+  };
+  const presenze = presenzeEffettive(serviti, "cena", cfgPren, rng);
+  const noShowCoperti = presenze.noShow;
+  if (noShowCoperti > 0) serviti = Math.max(0, serviti - noShowCoperti);
+
   const ricaviLordi = serviti * r.scontrinoMedio;
+  const ricaviPersiNoShow = noShowCoperti * r.scontrinoMedio;
+  if (noShowCoperti > serviti * 0.03) {
+    eventi.push(
+      `🪑 ${noShowCoperti} coperti prenotati e mai presentati: ${Math.round(ricaviPersiNoShow)}€ persi ` +
+      `con i tavoli tenuti e il personale in turno.` +
+      (!cfgPren.online ? " Con le prenotazioni online se ne perderebbero meno." : "") +
+      (!cfgPren.caparraGruppi ? " Una caparra sui gruppi taglierebbe il problema." : "")
+    );
+  }
   eventi.push(...r.eventi);
   if (respinti > serviti * 0.1) eventi.push(`🚪 ${respinti} clienti respinti: capienza o staff insufficienti`);
   if (perf.capacitaCoperti < 50) eventi.push(`⛔ Senza una brigata non si apre: assumi personale!`);
@@ -934,6 +984,58 @@ export function avanzaMese(
     };
   }
   const obblighi = verificaObblighi(s.staff as any, s.formazione);
+
+  // ── I cuochi imparano: dal mentore, dalla brigata, o perché glielo chiedi
+  const ricetteImparate: ReportMese["ricetteImparate"] = [];
+  const RUOLI_CUCINA_ID = new Set(["cuoco", "chef", "sous_chef", "commis", "pizzaiolo", "pasticcere"]);
+  const cuochi = s.staff.filter((d: any) => RUOLI_CUCINA_ID.has(d.ruoloEsteso ?? d.ruolo)) as any[];
+  const haMentore = s.staff.some((d: any) => (d.tratti ?? []).some((t: any) => t.id === "mentore"));
+  const repBrigata = [...repertorioBrigata(cuochi)];
+
+  // insegnamento richiesto dal giocatore
+  for (const ins of dec.insegnaRicette ?? []) {
+    const d = cuochi.find((x) => x.id === ins.idDipendente);
+    if (!d) continue;
+    d.repertorio ??= [];
+    const esito = imparaRicetta(
+      { eta: d.eta ?? 30, tecnica: d.attributi.tecnica, esperienza: d.attributi.esperienza,
+        formazione: d.formazione ?? "gavetta", stile: d.stile ?? "trattoria_classica", repertorio: d.repertorio },
+      ins.idRicetta, haMentore, rng,
+    );
+    eventi.push(`${esito.imparata ? "👨‍🍳" : "🥄"} ${d.nome}: ${esito.motivo}`);
+    if (esito.imparata) {
+      const nome = RICETTE_BASE.find((x) => x.id === ins.idRicetta)?.nome ?? ins.idRicetta;
+      ricetteImparate.push({ nome: d.nome, piatto: nome });
+    }
+  }
+
+  // apprendimento passivo: si impara guardando chi ti sta accanto
+  for (const d of cuochi) {
+    d.repertorio ??= [];
+    if (rng() > (haMentore ? 0.22 : 0.09)) continue;
+    // prima si impara dai colleghi; se sei solo in cucina, si prova da sé
+    let candidate = repBrigata.filter((id) => !d.repertorio.includes(id));
+    let daSolo = false;
+    if (!candidate.length) {
+      if (rng() > 0.45) continue; // provarci da soli riesce molto più di rado
+      daSolo = true;
+      candidate = RICETTE_BASE
+        .filter((x) => !d.repertorio.includes(x.id) && x.difficolta <= d.attributi.tecnica)
+        .map((x) => x.id);
+    }
+    if (!candidate.length) continue;
+    const scelta = candidate[Math.floor(rng() * candidate.length)];
+    const esito = imparaRicetta(
+      { eta: d.eta ?? 30, tecnica: d.attributi.tecnica, esperienza: d.attributi.esperienza,
+        formazione: d.formazione ?? "gavetta", stile: d.stile ?? "trattoria_classica", repertorio: d.repertorio },
+      scelta, haMentore, rng,
+    );
+    if (esito.imparata) {
+      const nome = RICETTE_BASE.find((x) => x.id === scelta)?.nome ?? scelta;
+      ricetteImparate.push({ nome: d.nome, piatto: nome });
+      eventi.push(`👨‍🍳 ${d.nome} ha imparato ${nome}${daSolo ? ", provandoci nei momenti morti" : " guardando la brigata"}.`);
+    }
+  }
 
   // ── Buste paga del mese (contratti.ts) e passaggio alla tesoreria
   const buste: ReportMese["buste"] = {};
@@ -1329,6 +1431,9 @@ export function avanzaMese(
     scadenze,
     usciteProiettate: usciteProiettate(scadenze, 4),
     consigli,
+    noShow: { coperti: noShowCoperti, ricaviPersi: ricaviPersiNoShow },
+    chiamate,
+    ricetteImparate,
     eventiCalendario: s.eventiLocali,
     sforamenti,
     ispezione,
