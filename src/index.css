@@ -84,6 +84,11 @@
     @apply border-border outline-ring/50;
   }
 
+  html {
+    overflow-x: clip;
+    max-width: 100%;
+  }
+
   body {
     @apply bg-background text-foreground;
     background-color: #2b2233;
@@ -98,8 +103,10 @@
 
 /* ── Ristorante Manager: pixel-art design system ── */
 @layer components {
-  .rm-pixel { font-family: 'Press Start 2P', monospace; letter-spacing: 0.5px; }
-  .rm-text { font-family: 'VT323', monospace; }
+  .rm-pixel { font-family: 'Press Start 2P', monospace; letter-spacing: 0.5px; line-height: 1.6; overflow-wrap: anywhere; hyphens: none; }
+  .rm-text { font-family: 'VT323', monospace; line-height: 1.25; }
+  /* Titoli lunghi: scala fluida, niente truncate */
+  .rm-title { font-family: 'Press Start 2P', monospace; font-size: clamp(8px, 2.6vw, 12px); line-height: 1.6; overflow-wrap: anywhere; }
 
   .rm-wood {
     background-color: #8c5a3c;
@@ -185,7 +192,9 @@
   .rm-scroll::-webkit-scrollbar-track { background: #2b2233; }
   .rm-scroll::-webkit-scrollbar-thumb { background: #5a3825; border: 2px solid #2b2233; }
   .pixelated { image-rendering: pixelated; image-rendering: crisp-edges; }
-  .rm-tap { min-height: 44px; }
+  .rm-tap { min-height: 44px; min-width: 44px; }
+  /* Contenitori a piena larghezza: l'ombra sporge, riserva lo spazio */
+  .rm-shadow-host { margin-right: 5px; }
 }
 
 /* Accessibilità: anello di focus visibile per chi naviga da tastiera */
@@ -211,6 +220,15 @@ a:focus-visible {
     transform: translate(3px, 3px);
     box-shadow: 1px 1px 0 #1a141f;
   }
+}
+
+/* Mobile (<480px): ombre più piccole per non sfondare la larghezza */
+@media (max-width: 480px) {
+  .rm-wood { box-shadow: 3px 3px 0 #1a141f; border-width: 3px; }
+  .rm-shadow { box-shadow: 3px 3px 0 #1a141f; }
+  .rm-btn { box-shadow: 3px 3px 0 #1a141f; padding: 10px 12px; }
+  .rm-btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #1a141f; }
+  .rm-shadow-host { margin-right: 3px; }
 }
 
 /* Rispetta prefers-reduced-motion: disabilita le animazioni pixel */

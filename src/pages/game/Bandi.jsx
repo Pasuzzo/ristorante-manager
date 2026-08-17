@@ -23,7 +23,7 @@ function PraticaCard({ d }) {
   return (
     <div className="rm-card-dark rm-no-radius p-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="rm-pixel text-[9px] text-rm-cream truncate">{d.titolo}</span>
+        <span className="rm-pixel text-[10px] text-rm-cream flex-1 min-w-0">{d.titolo}</span>
         <span className="rm-chip" style={{ backgroundColor: STATO_BG[d.stato] ?? '#5a3825' }}>
           {STATO_LABEL[d.stato] ?? d.stato}
         </span>
@@ -53,9 +53,9 @@ function BandoCard({ b, inAttesa, durcBlocco, onPresenta }) {
       style={!b.ammissibile ? { backgroundColor: '#a89a7a' } : undefined}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="rm-pixel text-[10px] text-rm-bg">{b.titolo}</div>
-          <div className="rm-text text-[14px] text-rm-wood-dark mt-[2px]">
+        <div className="min-w-0 flex-1">
+          <div className="rm-title text-rm-bg">{b.titolo}</div>
+          <div className="rm-text text-[14px] text-rm-wood-dark mt-1">
             {ENTE_FLAG[b.ente] ?? '🏛️'} {ENTE_LABEL[b.ente] ?? b.ente}
           </div>
         </div>
@@ -79,19 +79,19 @@ function BandoCard({ b, inAttesa, durcBlocco, onPresenta }) {
           </div>
         </>
       ) : (
-        <div className="mt-2 space-y-[2px]">
+        <div className="mt-2 space-y-1">
           {b.motiviEsclusione?.map((m, i) => (
-            <div key={i} className="rm-text text-[13px] text-rm-red">✗ {m}</div>
+            <div key={i} className="rm-text text-[14px] text-rm-red">✗ {m}</div>
           ))}
         </div>
       )}
 
-      <div className="flex justify-end mt-2">
+      <div className="flex justify-end mt-3">
         <PixelButton
           variant={ammissibile ? 'green' : 'wood'}
           disabled={!ammissibile}
           onClick={() => onPresenta(b.id)}
-          className="text-[9px] py-1"
+          className="text-[10px] py-2 min-h-[44px]"
         >
           Presenta domanda
         </PixelButton>
@@ -143,12 +143,12 @@ export default function Bandi({ report, decisioni, setDecisioni }) {
           non è consulenza reale.
         </div>
 
-        <div className="mt-2 rm-card rm-no-radius p-2">
+        <div className="mt-3 rm-card rm-no-radius p-3">
           <div className="flex items-center justify-between">
-            <span className="rm-pixel text-[8px] text-rm-bg uppercase">
+            <span className="rm-pixel text-[10px] text-rm-bg uppercase">
               Investimento previsto
             </span>
-            <span className="rm-pixel text-[11px] text-rm-gold">{money(investimento)}</span>
+            <span className="rm-pixel text-[12px] text-rm-gold">{money(investimento)}</span>
           </div>
           <input
             type="range"
@@ -157,9 +157,9 @@ export default function Bandi({ report, decisioni, setDecisioni }) {
             step={1000}
             value={investimento}
             onChange={(e) => setInvestimento(Number(e.target.value))}
-            className="w-full mt-1"
+            className="w-full mt-2"
           />
-          <div className="rm-text text-[13px] text-rm-bg/60 mt-[2px]">
+          <div className="rm-text text-[14px] text-rm-bg/60 mt-1">
             Più alto è l'investimento documentato, più contributo puoi
             ottenere — ma solo la spesa con fattura conta.
           </div>

@@ -97,7 +97,7 @@ function Commercialista({ report }) {
       <div className="space-y-1">
         {consigli.map((c, i) => (
           <div key={i} className={`rm-no-radius p-2 ${GRAV_BG[c.gravita] ?? 'bg-rm-bg2'}`}>
-            <div className={`rm-pixel text-[7px] uppercase mb-1 ${GRAV_TX[c.gravita] ?? ''}`}>{c.gravita}</div>
+            <div className={`rm-pixel text-[8px] uppercase mb-1 ${GRAV_TX[c.gravita] ?? ''}`}>{c.gravita}</div>
             <div className={`rm-text text-[16px] leading-snug ${GRAV_TX[c.gravita] ?? ''}`}>{c.testo}</div>
           </div>
         ))}
@@ -126,9 +126,9 @@ function Commercialista({ report }) {
       {scadenze.length > 0 && (
         <div className="mt-3">
           <div className="rm-pixel text-[8px] text-rm-cream/70 uppercase mb-1">Scadenze</div>
-          <div className="space-y-[2px]">
+          <div className="space-y-1">
             {scadenze.map((s, i) => (
-              <div key={i} className="rm-card-dark rm-no-radius px-2 py-1 flex items-center gap-2">
+              <div key={i} className="rm-card-dark rm-no-radius px-2 py-2 flex items-center gap-2">
                 <span className="rm-pixel text-[8px] text-rm-gold w-12">{nomeMese(s.mese)}</span>
                 <span className="rm-text text-[15px] text-rm-cream flex-1 truncate">
                   {s.critica ? '⚠️ ' : ''}{s.voce}{s.certezza === 'stimata' ? ' ~' : ''}

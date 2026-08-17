@@ -85,7 +85,7 @@ function coloreRapporto(r) {
 function BarraPrep({ rapporto, label }) {
   return (
     <div className="flex items-center gap-1">
-      <span className="rm-pixel text-[6px] uppercase text-rm-wood-dark w-[18px]">{label}</span>
+      <span className="rm-pixel text-[10px] uppercase text-rm-wood-dark w-[22px]">{label}</span>
       <SegmentedBar
         value={Math.min(rapporto, 1.3)}
         max={1.3}
@@ -102,14 +102,14 @@ function CellServizio({ giorno, sv, sp, staff, copertiAttesi, complessita, onCha
   const [aggiungi, setAggiungi] = useState('');
   if (!sp) return <div className="min-w-[150px]" />;
   if (locked) {
-    return (
-      <div className="min-w-[150px]">
-        <div className="rm-card rm-no-radius p-1 opacity-40">
-          <div className="rm-pixel text-[7px] text-rm-bg">{sp.aperto ? 'APERTO' : 'CHIUSO'}</div>
-          <div className="rm-pixel text-[7px] text-rm-wood-dark mt-1">🔒 {sp.turni.length} in turno</div>
-        </div>
+  return (
+    <div className="min-w-[150px]">
+      <div className="rm-card rm-no-radius p-2 opacity-40">
+        <div className="rm-pixel text-[10px] text-rm-bg">{sp.aperto ? 'APERTO' : 'CHIUSO'}</div>
+        <div className="rm-pixel text-[10px] text-rm-wood-dark mt-1">🔒 {sp.turni.length} in turno</div>
       </div>
-    );
+    </div>
+  );
   }
 
   const presenti = new Set(sp.turni.map((t) => t.idDipendente));
@@ -133,19 +133,19 @@ function CellServizio({ giorno, sv, sp, staff, copertiAttesi, complessita, onCha
 
   return (
     <div className="min-w-[150px]">
-      <div className={`rm-card rm-no-radius p-1 h-full ${sp.aperto ? '' : 'opacity-60'}`}>
+      <div className={`rm-card rm-no-radius p-2 h-full ${sp.aperto ? '' : 'opacity-60'}`}>
         <button
           onClick={toggleAperto}
-          className={`rm-btn ${sp.aperto ? 'rm-btn-green' : 'rm-btn-wood'} text-[8px] w-full py-1 text-center`}
+          className={`rm-btn ${sp.aperto ? 'rm-btn-green' : 'rm-btn-wood'} text-[10px] w-full py-2 text-center min-h-[44px]`}
         >
           {sp.aperto ? 'APERTO' : 'CHIUSO'}
         </button>
 
         {sp.aperto && (
           <>
-            <div className="mt-1">
-              <div className="rm-pixel text-[6px] uppercase text-rm-wood-dark">Apertura</div>
-              <div className="flex items-center gap-1">
+            <div className="mt-2">
+              <div className="rm-pixel text-[10px] uppercase text-rm-wood-dark">Apertura</div>
+              <div className="flex items-center gap-2 mt-1">
                 <input
                   type="range"
                   min={F.aperturaMin}
@@ -155,21 +155,21 @@ function CellServizio({ giorno, sv, sp, staff, copertiAttesi, complessita, onCha
                   onChange={(e) => setApertura(parseFloat(e.target.value))}
                   className="w-full"
                 />
-                <span className="rm-pixel text-[8px] text-rm-bg w-[34px]">{fmtTime(sp.oraApertura)}</span>
+                <span className="rm-pixel text-[10px] text-rm-bg w-[40px]">{fmtTime(sp.oraApertura)}</span>
               </div>
             </div>
 
-            <div className="mt-1 space-y-1">
+            <div className="mt-2 space-y-2">
               {sp.turni.map((t) => {
                 const d = staff.find((x) => x.id === t.idDipendente);
                 if (!d) return null;
                 return (
-                  <div key={t.idDipendente} className="rm-card-dark rm-no-radius p-1">
-                    <div className="flex items-center justify-between">
-                      <span className="rm-pixel text-[7px] text-rm-cream truncate">{d.nome}</span>
-                      <button onClick={() => rimuovi(t.idDipendente)} aria-label={`Rimuovi ${d.nome} dal turno`} className="rm-pixel text-[8px] text-rm-red">✕</button>
+                  <div key={t.idDipendente} className="rm-card-dark rm-no-radius p-2">
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="rm-pixel text-[10px] text-rm-cream truncate flex-1">{d.nome}</span>
+                      <button onClick={() => rimuovi(t.idDipendente)} aria-label={`Rimuovi ${d.nome} dal turno`} className="rm-pixel text-[10px] text-rm-red min-h-[44px] min-w-[44px] flex items-center justify-center -mr-1">✕</button>
                     </div>
-                    <div className="flex items-center gap-1 mt-1">
+                    <div className="flex items-center gap-2 mt-1">
                       <input
                         type="range"
                         min={F.inizio}
@@ -179,7 +179,7 @@ function CellServizio({ giorno, sv, sp, staff, copertiAttesi, complessita, onCha
                         onChange={(e) => setArrivo(t.idDipendente, parseFloat(e.target.value))}
                         className="w-full"
                       />
-                      <span className="rm-pixel text-[7px] text-rm-gold w-[34px]">{fmtTime(t.oraArrivo)}</span>
+                      <span className="rm-pixel text-[10px] text-rm-gold w-[40px]">{fmtTime(t.oraArrivo)}</span>
                     </div>
                   </div>
                 );
@@ -187,22 +187,22 @@ function CellServizio({ giorno, sv, sp, staff, copertiAttesi, complessita, onCha
             </div>
 
             {disponibili.length > 0 && (
-              <div className="mt-1 flex gap-1">
+              <div className="mt-2 flex gap-2">
                 <select
                   value={aggiungi}
                   onChange={(e) => setAggiungi(e.target.value)}
-                  className="rm-input text-[12px] py-[2px] flex-1"
+                  className="rm-input text-[14px] py-2 flex-1"
                 >
                   <option value="">+ persona…</option>
                   {disponibili.map((d) => (
                     <option key={d.id} value={d.id}>{d.nome}</option>
                   ))}
                 </select>
-                <PixelButton variant="wood" className="text-[8px] px-2 py-[2px]" aria-label="Aggiungi persona al turno" onClick={aggiungiPersona}>+</PixelButton>
+                <PixelButton variant="wood" className="text-[12px] px-2 py-2 min-h-[44px] min-w-[44px]" aria-label="Aggiungi persona al turno" onClick={aggiungiPersona}>+</PixelButton>
               </div>
             )}
 
-            <div className="mt-1 space-y-[2px]">
+            <div className="mt-2 space-y-1">
               <BarraPrep rapporto={rap.cucina} label="CUC" />
               <BarraPrep rapporto={rap.sala} label="SAL" />
             </div>
@@ -265,8 +265,8 @@ export default function Turni({ stato, report, decisioni, setDecisioni, giornoCo
           <Stat label="Bloccanti" value={bloccanti.length} icon="stamp" accent={bloccanti.length ? 'text-rm-red' : 'text-rm-green'} />
         </div>
 
-        <div className="mt-2 space-y-1">
-          <div className="rm-pixel text-[7px] uppercase text-rm-wood-dark">Ore settimanali a persona</div>
+        <div className="mt-3 space-y-2">
+          <div className="rm-pixel text-[8px] uppercase text-rm-wood-dark">Ore settimanali a persona</div>
           {staff.length === 0 && (
             <div className="rm-text text-[15px] text-rm-cream/60">Nessun dipendente.</div>
           )}
@@ -274,17 +274,17 @@ export default function Turni({ stato, report, decisioni, setDecisioni, giornoCo
             const ore = oreSett[d.id] ?? 0;
             const oltre = ore > 40;
             return (
-              <div key={d.id} className="flex items-center justify-between rm-card rm-no-radius px-2 py-1">
-                <span className="rm-pixel text-[8px] text-rm-bg truncate">{d.nome}</span>
-                <span className={`rm-pixel text-[9px] ${oltre ? 'text-rm-red' : 'text-rm-bg'}`}>{ore.toFixed(1)}h</span>
+              <div key={d.id} className="flex items-center justify-between rm-card rm-no-radius px-2 py-2">
+                <span className="rm-pixel text-[10px] text-rm-bg truncate">{d.nome}</span>
+                <span className={`rm-pixel text-[10px] ${oltre ? 'text-rm-red' : 'text-rm-bg'}`}>{ore.toFixed(1)}h</span>
               </div>
             );
           })}
         </div>
 
         {violazioni.length > 0 && (
-          <div className="mt-2 rm-card-dark rm-no-radius p-2 space-y-1">
-            <div className="rm-pixel text-[7px] uppercase text-rm-cream/60">Violazioni turni</div>
+          <div className="mt-3 rm-card-dark rm-no-radius p-2 space-y-1">
+            <div className="rm-pixel text-[8px] uppercase text-rm-cream/60">Violazioni turni</div>
             {violazioni.slice(0, 6).map((v, i) => (
               <div key={i} className="rm-text text-[15px] flex gap-1">
                 <span className={v.bloccante ? 'text-rm-red' : 'text-rm-gold'}>{v.bloccante ? '⛔' : '⚠'}</span>
@@ -299,21 +299,21 @@ export default function Turni({ stato, report, decisioni, setDecisioni, giornoCo
       </PixelPanel>
 
       <PixelPanel title="Griglia settimanale" icon="cal">
-        <div className="flex flex-wrap gap-1 mb-2">
-          <PixelButton variant="wood" className="text-[8px] px-2 py-1" onClick={ripristinaDefault}>Default</PixelButton>
-          <PixelButton variant="wood" className="text-[8px] px-2 py-1" onClick={copiaDaScorsa}>Da settimana scorsa</PixelButton>
+        <div className="flex flex-wrap gap-2 mb-3">
+          <PixelButton variant="wood" className="text-[10px] px-2 py-2 min-h-[44px]" onClick={ripristinaDefault}>Default</PixelButton>
+          <PixelButton variant="wood" className="text-[10px] px-2 py-2 min-h-[44px]" onClick={copiaDaScorsa}>Da settimana scorsa</PixelButton>
         </div>
-        <div className="rm-text text-[14px] text-rm-cream/60 mb-2">
+        <div className="rm-text text-[14px] text-rm-cream/60 mb-3">
           Modifica un giorno, poi copialo su tutta la settimana.
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-3">
           {GIORNI.map((g, dow) => (
-            <div key={g} className="rm-card-dark rm-no-radius p-1">
-              <div className="rm-pixel text-[9px] text-rm-cream text-center py-1 border-b-[2px] border-rm-wood-dark mb-1">{g}</div>
-              <div className="grid grid-cols-2 gap-1">
+            <div key={g} className="rm-card-dark rm-no-radius p-2">
+              <div className="rm-pixel text-[10px] text-rm-cream text-center py-2 border-b-[2px] border-rm-wood-dark mb-2">{g}</div>
+              <div className="grid grid-cols-2 gap-2">
                 <div className="flex flex-col gap-1">
-                  <div className="rm-pixel text-[6px] uppercase text-rm-gold text-center">Pranzo</div>
+                  <div className="rm-pixel text-[10px] uppercase text-rm-gold text-center">Pranzo</div>
                   <CellServizio
                     giorno={dow}
                     sv="pranzo"
@@ -326,7 +326,7 @@ export default function Turni({ stato, report, decisioni, setDecisioni, giornoCo
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <div className="rm-pixel text-[6px] uppercase text-rm-gold text-center">Cena</div>
+                  <div className="rm-pixel text-[10px] uppercase text-rm-gold text-center">Cena</div>
                   <CellServizio
                     giorno={dow}
                     sv="cena"
@@ -343,15 +343,15 @@ export default function Turni({ stato, report, decisioni, setDecisioni, giornoCo
           ))}
         </div>
 
-        <div className="mt-2 flex flex-wrap gap-1">
+        <div className="mt-3 flex flex-wrap gap-2">
           {GIORNI.map((g, dow) => (
             <PixelButton
               key={g}
               variant="blue"
-              className="text-[7px] px-2 py-1"
+              className="text-[10px] px-2 py-2 min-h-[44px]"
               onClick={() => copiaSuSettimana(dow)}
             >
-              {g} → settimana
+              {g} → sett.
             </PixelButton>
           ))}
         </div>
