@@ -241,6 +241,7 @@ export default function Turni({ stato, report, decisioni, setDecisioni, giornoCo
   const buste = report?.buste ?? {};
   const violazioni = report?.violazioniTurni ?? [];
   const bloccanti = violazioni.filter((v) => v.bloccante);
+  const [giornoSelezionato, setGiornoSelezionato] = useState(0);
 
   // Durante la pausa si editano solo i giorni successivi a quello in corso.
   const dowsModificabili = useMemo(() => {
@@ -337,46 +338,58 @@ export default function Turni({ stato, report, decisioni, setDecisioni, giornoCo
           <PixelButton variant="wood" className="text-[10px] px-2 py-2 min-h-[44px]" onClick={ripristinaDefault}>Default</PixelButton>
           <PixelButton variant="wood" className="text-[10px] px-2 py-2 min-h-[44px]" onClick={copiaDaScorsa}>Da settimana scorsa</PixelButton>
         </div>
-        <div className="rm-text text-[14px] text-rm-cream/60 mb-3">
-          Modifica un giorno, poi copialo su tutta la settimana.
+
+        {/* Selettore giorni in alto */}
+        <div className="grid grid-cols-7 gap-1 mb-3">
+          {GIORNI.map((g, dow) => {
+            const on = giornoSelezionato === dow;
+            return (
+              <button
+                key={g}
+                onClick={() => setGiornoSelezionato(dow)}
+                aria-label={`Apri ${g}`}
+                aria-current={on ? 'page' : undefined}
+                className={`rm-tap py-2 rm-pixel text-[10px] text-center ${on ? 'rm-btn-blue' : 'rm-card-dark rm-no-radius text-rm-cream/70'}`}
+              >
+                {g}
+              </button>
+            );
+          })}
         </div>
 
-        <div className="space-y-3">
-          {GIORNI.map((g, dow) => (
-            <div key={g} className="rm-card-dark rm-no-radius p-2">
-              <div className="rm-pixel text-[10px] text-rm-cream text-center py-2 border-b-[2px] border-rm-wood-dark mb-2">{g}</div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="flex flex-col gap-1">
-                  <div className="rm-pixel text-[10px] uppercase text-rm-gold text-center">Pranzo</div>
-                  <CellServizio
-                    giorno={dow}
-                    sv="pranzo"
-                    sp={griglia[dow]?.pranzo}
-                    staff={staff}
-                    copertiAttesi={copertiAttesi}
-                    complessita={complessita}
-                    locked={dowLocked(dow)}
-                    consiglio={orariMap[`${dow}-pranzo`]}
-                    onChange={(cell) => setCell(dow, 'pranzo', cell)}
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <div className="rm-pixel text-[10px] uppercase text-rm-gold text-center">Cena</div>
-                  <CellServizio
-                    giorno={dow}
-                    sv="cena"
-                    sp={griglia[dow]?.cena}
-                    staff={staff}
-                    copertiAttesi={copertiAttesi}
-                    complessita={complessita}
-                    locked={dowLocked(dow)}
-                    consiglio={orariMap[`${dow}-cena`]}
-                    onChange={(cell) => setCell(dow, 'cena', cell)}
-                  />
-                </div>
-              </div>
+        {/* Solo il giorno selezionato */}
+        <div className="rm-card-dark rm-no-radius p-2">
+          <div className="rm-pixel text-[10px] text-rm-cream text-center py-2 border-b-[2px] border-rm-wood-dark mb-2">{GIORNI[giornoSelezionato]}</div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-1">
+              <div className="rm-pixel text-[10px] uppercase text-rm-gold text-center">Pranzo</div>
+              <CellServizio
+                giorno={giornoSelezionato}
+                sv="pranzo"
+                sp={griglia[giornoSelezionato]?.pranzo}
+                staff={staff}
+                copertiAttesi={copertiAttesi}
+                complessita={complessita}
+                locked={dowLocked(giornoSelezionato)}
+                consiglio={orariMap[`${giornoSelezionato}-pranzo`]}
+                onChange={(cell) => setCell(giornoSelezionato, 'pranzo', cell)}
+              />
             </div>
-          ))}
+            <div className="flex flex-col gap-1">
+              <div className="rm-pixel text-[10px] uppercase text-rm-gold text-center">Cena</div>
+              <CellServizio
+                giorno={giornoSelezionato}
+                sv="cena"
+                sp={griglia[giornoSelezionato]?.cena}
+                staff={staff}
+                copertiAttesi={copertiAttesi}
+                complessita={complessita}
+                locked={dowLocked(giornoSelezionato)}
+                consiglio={orariMap[`${giornoSelezionato}-cena`]}
+                onChange={(cell) => setCell(giornoSelezionato, 'cena', cell)}
+              />
+            </div>
+          </div>
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
