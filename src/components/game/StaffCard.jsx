@@ -43,9 +43,10 @@ export default function StaffCard({
   pendingLicenzia = false, pendingAumento = null,
 }) {
   const d = dipendente;
-  const reparto = repartoDi(d.ruolo);
-  const lordo = lordoMensile(d.ruolo, d.superminimo);
-  const coperti = Math.round(copertiEffettivi(d.ruolo, d.attributi?.velocita ?? 10, d.morale ?? 50));
+  const ruolo = d.ruoloEsteso ?? d.ruolo;
+  const reparto = repartoDi(ruolo);
+  const lordo = lordoMensile(ruolo, d.superminimo);
+  const coperti = Math.round(copertiEffettivi(ruolo, d.attributi?.velocita ?? 10, d.morale ?? 50));
 
   return (
     <div className="rm-card rm-no-radius rm-shadow p-2">
@@ -53,12 +54,12 @@ export default function StaffCard({
         <div>
           <div className="rm-pixel text-[12px] text-rm-bg">{d.nome}</div>
           <div className="rm-text text-[16px] text-rm-wood-dark leading-none">
-            {ruoloLabel(d.ruolo)} · {reparto}{d.eta != null ? ` · ${d.eta} anni` : ''}
+            {ruoloLabel(ruolo)} · {reparto}{d.eta != null ? ` · ${d.eta} anni` : ''}
           </div>
           <div className="rm-text text-[14px] text-rm-wood-dark leading-none mt-[2px]">
             copre <span className="rm-pixel text-[9px] text-rm-bg">{coperti}</span> coperti a servizio
           </div>
-          {d.ruoloEsteso && CUCINA_ESTESO.has(d.ruoloEsteso) && <Repertorio repertorio={d.repertorio ?? []} />}
+          {CUCINA_ESTESO.has(ruolo) && <Repertorio repertorio={d.repertorio ?? []} />}
         </div>
         <div className="flex flex-col items-end gap-1">
           <Chip color={d.inRegola ? 'bg-rm-green' : 'bg-rm-red'}>
@@ -91,7 +92,7 @@ export default function StaffCard({
 
       <div className="mt-2 flex items-center justify-between border-t-2 border-rm-wood-dark/40 pt-1">
         <div className="rm-text text-[16px] text-rm-bg">
-          Stipendio <span className="rm-pixel text-[10px]">{money(lordo)}/mese</span>
+          Paga contrattuale <span className="rm-pixel text-[10px]">{money(lordo)}/mese</span>
           {d.superminimo > 1 && <span className="text-rm-green"> (+{Math.round((d.superminimo - 1) * 100)}%)</span>}
         </div>
         <div className="rm-text text-[14px] text-rm-wood-dark">

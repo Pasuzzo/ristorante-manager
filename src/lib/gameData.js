@@ -35,6 +35,8 @@ export const LOCALITA = [
   { value: 'paese', label: 'Paese', desc: 'Costante, poco turismo, conta il passaparola.' },
 ];
 
+import { LORDO_FULLTIME } from '../../base44/shared/engine/contratti';
+
 // Allineato a fiscal-config.ts (ccnlLordoMensile)
 export const RUOLI = [
   { value: 'lavapiatti', label: 'Lavapiatti', reparto: 'cucina' },
@@ -75,16 +77,17 @@ export const CCNL = {
 };
 
 export function lordoMensile(ruolo, superminimo = 1) {
-  return Math.round((CCNL[ruolo] ?? 1700) * superminimo);
+  return Math.round((LORDO_FULLTIME[ruolo] ?? 1700) * superminimo);
 }
 
-export function ruoloLabel(v) { return RUOLI.find((r) => r.value === v)?.label ?? v; }
+export function ruoloLabel(v) { return RUOLI_ESTESI[v] ?? RUOLI.find((r) => r.value === v)?.label ?? v; }
 export function formaLabel(v) { return FORME.find((f) => f.value === v)?.label ?? v; }
 export function localitaLabel(v) { return LOCALITA.find((l) => l.value === v)?.label ?? v; }
 export function livelloLabel(v) { return LIVELLI.find((l) => l.value === v)?.label ?? v; }
 export function qualitaLabel(v) { return QUALITA.find((q) => q.value === v)?.label ?? v; }
 export function servizioLabel(v) { return SERVIZI.find((s) => s.value === v)?.label ?? v; }
-export function repartoDi(ruolo) { return RUOLI.find((r) => r.value === ruolo)?.reparto ?? 'sala'; }
+const CUCINA_ESTESA = new Set(['lavapiatti', 'commis', 'cuoco', 'chef', 'sous_chef', 'pizzaiolo', 'pasticcere']);
+export function repartoDi(ruolo) { return CUCINA_ESTESA.has(ruolo) ? 'cucina' : 'sala'; }
 
 // ── Etichette per il nuovo engine (titolare, mercato, macro)
 export const RUOLI_ESTESI = {
