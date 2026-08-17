@@ -50,12 +50,12 @@ export default function Home() {
 
   // Backup cloud facoltativo: scrive l'export nell'entità Partita (campo stato).
   const salvaCloud = async () => {
-    setCloudMsg(''); setCloudBusy(true);
+    setCloudMsg('');setCloudBusy(true);
     try {
       const payload = JSON.parse(await gioco.esporta());
       const rec = await base44.entities.Partita.filter({ nome: '__cloud_backup__' });
-      if (rec.length) await base44.entities.Partita.update(rec[0].id, { stato: payload });
-      else await base44.entities.Partita.create({ nome: '__cloud_backup__', stato: payload });
+      if (rec.length) await base44.entities.Partita.update(rec[0].id, { stato: payload });else
+      await base44.entities.Partita.create({ nome: '__cloud_backup__', stato: payload });
       setCloudMsg('Backup sul cloud OK');
     } catch (e) {
       setCloudMsg('Errore backup: ' + (e?.message ?? ''));
@@ -65,10 +65,10 @@ export default function Home() {
   };
 
   const ripristinaCloud = async () => {
-    setCloudMsg(''); setCloudBusy(true);
+    setCloudMsg('');setCloudBusy(true);
     try {
       const rec = await base44.entities.Partita.filter({ nome: '__cloud_backup__' });
-      if (!rec.length) { setCloudMsg('Nessun backup trovato'); return; }
+      if (!rec.length) {setCloudMsg('Nessun backup trovato');return;}
       const res = await gioco.importa(JSON.stringify(rec[0].stato));
       await carica();
       setCloudMsg(`Ripristinate ${res.importate} partite${res.errori ? ` (${res.errori} errori)` : ''}`);
@@ -83,7 +83,7 @@ export default function Home() {
   // giocate via backend). Non tocca i salvataggi locali esistenti: ogni
   // partita cloud diventa una voce giocabile con il suo stesso id.
   const importaCloud = async () => {
-    setCloudMsg(''); setCloudBusy(true);
+    setCloudMsg('');setCloudBusy(true);
     try {
       const n = await importaPartiteCloud();
       await carica();
@@ -117,25 +117,25 @@ export default function Home() {
       </header>
 
       <div className="flex items-center justify-between mb-2 gap-2">
-        <h2 className="rm-pixel text-[12px] text-rm-cream text-balance">LE TUE PARTITE</h2>
+        <h2 className="rm-pixel text-[12px] text-balance">LE TUE PARTITE</h2>
         <div className="flex gap-2">
-          <PixelButton variant="green" className="text-[10px] py-2 rm-tap" onClick={() => navigate('/nuova')}>+ Nuova partita</PixelButton>
+          <PixelButton variant="green" className="text-[10px] rm-tap py-1" onClick={() => navigate('/nuova')}>+ Nuova partita</PixelButton>
           <PixelButton variant="wood" className="text-[10px] py-2 rm-tap" aria-label="Esci" onClick={() => base44.auth.logout('/login')}>Esci</PixelButton>
         </div>
       </div>
 
       {errore && <div className="rm-card-dark rm-no-radius p-2 mb-3 text-rm-red rm-text text-[16px]">{errore}</div>}
 
-      {righe === null ? (
-        <div className="rm-card-dark rm-no-radius p-4 rm-text text-[18px] text-rm-cream/60">Caricamento…</div>
-      ) : righe.length === 0 ? (
-        <div className="rm-card-dark rm-no-radius p-6 text-center rm-text text-[18px] text-rm-cream/70">
+      {righe === null ?
+      <div className="rm-card-dark rm-no-radius p-4 rm-text text-[18px] text-rm-cream/60">Caricamento…</div> :
+      righe.length === 0 ?
+      <div className="rm-card-dark rm-no-radius p-6 text-center rm-text text-[18px] text-rm-cream/70">
           Nessuna partita. Crea la tua prima trattoria!
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {righe.map((p) => (
-            <div key={p.id} className="rm-card rm-no-radius rm-shadow p-3">
+        </div> :
+
+      <div className="space-y-3">
+          {righe.map((p) =>
+        <div key={p.id} className="rm-card rm-no-radius rm-shadow p-3">
               <div className="flex items-start justify-between gap-2">
                 <button onClick={() => navigate(`/partita/${p.id}`)} aria-label={`Riprendi ${p.nome}`} className="text-left flex-1 min-w-0">
                   <div className="rm-pixel text-[13px] text-rm-bg truncate">{p.nome || 'Ristorante'}</div>
@@ -159,33 +159,33 @@ export default function Home() {
 
               <div className="flex gap-2 mt-2 border-t-2 border-rm-wood-dark/40 pt-2">
                 <PixelButton variant="blue" className="text-[9px] py-2 rm-tap flex-1" onClick={() => navigate(`/partita/${p.id}`)}>Riprendi</PixelButton>
-                <PixelButton variant="wood" className="text-[9px] py-2 rm-tap" aria-label={`Elimina ${p.nome}`} onClick={() => { if (confirm('Eliminare questa partita?')) elimina(p.id); }}>Elimina</PixelButton>
+                <PixelButton variant="wood" className="text-[9px] py-2 rm-tap" aria-label={`Elimina ${p.nome}`} onClick={() => {if (confirm('Eliminare questa partita?')) elimina(p.id);}}>Elimina</PixelButton>
               </div>
             </div>
-          ))}
+        )}
         </div>
-      )}
+      }
 
       <div className="rm-card-dark rm-no-radius p-3 mt-4">
         <div className="rm-pixel text-[10px] text-rm-cream mb-2">BACKUP SU CLOUD (FACOLTATIVO)</div>
-        {isAuthenticated ? (
-          <>
+        {isAuthenticated ?
+        <>
             <div className="flex gap-2 flex-wrap">
               <PixelButton variant="blue" className="text-[9px] py-2 rm-tap" disabled={cloudBusy} onClick={salvaCloud}>Salva copia online</PixelButton>
-              <PixelButton variant="wood" className="text-[9px] py-2 rm-tap" disabled={cloudBusy} onClick={() => { if (confirm('Sovrascrivi le partite locali con il backup cloud?')) ripristinaCloud(); }}>Ripristina da online</PixelButton>
+              <PixelButton variant="wood" className="text-[9px] py-2 rm-tap" disabled={cloudBusy} onClick={() => {if (confirm('Sovrascrivi le partite locali con il backup cloud?')) ripristinaCloud();}}>Ripristina da online</PixelButton>
               <PixelButton variant="green" className="text-[9px] py-2 rm-tap" disabled={cloudBusy} onClick={importaCloud}>Importa partita dal cloud</PixelButton>
             </div>
             {cloudMsg && <div className="rm-text text-[15px] text-rm-gold mt-2">{cloudMsg}</div>}
-          </>
-        ) : (
-          <>
+          </> :
+
+        <>
             <p className="rm-text text-[16px] text-rm-cream/80 leading-snug">
               Le partite sono salvate su questo dispositivo. Accedi se vuoi tenerne una copia online.
             </p>
             <PixelButton variant="blue" className="text-[9px] py-2 rm-tap mt-2" onClick={() => navigate('/login')}>Accedi</PixelButton>
           </>
-        )}
+        }
       </div>
-    </div>
-  );
+    </div>);
+
 }
