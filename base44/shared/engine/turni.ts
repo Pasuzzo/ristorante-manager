@@ -401,3 +401,59 @@ export function demo(): void {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) demo();
+
+
+// ─────────────────────────────────────────────── Orario consigliato
+
+/**
+ * A che ora DOVREBBERO entrare, dati i coperti attesi e quanti sono.
+ * Il motore lo sa già calcolare: non dirlo al giocatore significa
+ * fargli pagare ore a vuoto senza mai spiegargli perché.
+ */
+export function arrivoConsigliato(
+  sp: ServizioPianificato,
+  personale: PersonaInTurno[],
+  copertiAttesi: number,
+  complessitaMenu = 0.4
+): { cucina: number | null; sala: number | null; oreCucina: number; oreSala: number } {
+  const fab = fabbisognoPreparazione(copertiAttesi, complessitaMenu);
+  const inTurno = personale.filter((p) => sp.turni.some((t) => t.idDipendente === p.id));
+  const nCucina = inTurno.filter((p) => repartoDi(p.ruolo) === "cucina").length;
+  const nSala = inTurno.length - nCucina;
+  return {
+    cucina: nCucina > 0 ? Math.round((sp.oraApertura - fab.cucina / nCucina) * 4) / 4 : null,
+    sala: nSala > 0 ? Math.round((sp.oraApertura - fab.sala / nSala) * 4) / 4 : null,
+    oreCucina: fab.cucina, oreSala: fab.sala,
+  };
+}
+
+/** Formatta un'ora decimale: 17.25 → "17:15". */
+export function oraTesto(h: number): string {
+  const ore = Math.floor(h);
+  const min = Math.round((h - ore) * 60);
+  return `${String(ore).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+/** Turni che puntano a persone che non esistono più. */
+export function turniOrfani(g: Griglia, idValidi: Set<string>): string[] {
+  const orfani = new Set<string>();
+  for (const giorno of g) {
+    for (const sv of ["pranzo", "cena"] as Servizio[]) {
+      for (const t of giorno[sv].turni) if (!idValidi.has(t.idDipendente)) orfani.add(t.idDipendente);
+    }
+  }
+  return [...orfani];
+}
+
+/** Toglie dalla griglia chiunque non sia più in organico. */
+export function ripuliscGriglia(g: Griglia, idValidi: Set<string>): number {
+  let rimossi = 0;
+  for (const giorno of g) {
+    for (const sv of ["pranzo", "cena"] as Servizio[]) {
+      const prima = giorno[sv].turni.length;
+      giorno[sv].turni = giorno[sv].turni.filter((t) => idValidi.has(t.idDipendente));
+      rimossi += prima - giorno[sv].turni.length;
+    }
+  }
+  return rimossi;
+}

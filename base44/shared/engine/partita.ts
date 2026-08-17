@@ -55,6 +55,7 @@ import {
 import {
   Griglia, PersonaInTurno, EsitoServizio, ViolazioneTurni,
   grigliaIniziale, valutaServizio, verificaVincoli, affaticamento,
+  arrivoConsigliato, oraTesto, turniOrfani, ripuliscGriglia,
   QUOTA_PRANZO, COPERTI_SERVIZIO, copertiEffettivi, repartoDi,
 } from "./turni.ts";
 import {
@@ -269,6 +270,10 @@ export interface ReportMese {
   scadenze: Scadenza[];
   usciteProiettate: Array<{ mesiAvanti: number; mese: number; totale: number }>;
   consigli: Consiglio[];
+  /** per ogni servizio della settimana: a che ora dovrebbero entrare */
+  orariConsigliati: Array<{ dow: number; servizio: Servizio; cucina: string | null; sala: string | null; coperti: number }>;
+  /** quanta domanda perdi tenendo chiusi dei servizi */
+  domandaPersaChiusure: { coperti: number; ricaviPersi: number; serviziAperti: number; serviziPossibili: number };
   /** no-show del mese: prenotazioni non presentate */
   noShow: { coperti: number; ricaviPersi: number };
   /** esiti delle convocazioni degli extra */
@@ -512,7 +517,20 @@ export function avanzaMese(
   for (const d of s.staff) if (!s.orari[d.id]) s.orari[d.id] = { oreFeriali: 24, oreFestive: 16 };
   if (!s.nero) s.nero = nuovoStatoNero();
   if (!s.griglia) s.griglia = grigliaIniziale(s.staff.map((d: any) => ({ id: d.id, ruolo: d.ruoloEsteso ?? d.ruolo })), s.locale.giornoChiusura ?? 1);
-  if (dec.griglia) s.griglia = dec.griglia;
+  if (dec.griglia) {
+    // Un id che non corrisponde a nessuno oggi svuota il turno senza dire
+    // niente: mezza sala sparisce e te ne accorgi dai coperti respinti.
+    const idValidi = new Set(s.staff.map((d) => d.id));
+    const orfani = turniOrfani(dec.griglia, idValidi);
+    if (orfani.length) {
+      const rimossi = ripuliscGriglia(dec.griglia, idValidi);
+      eventi.push(
+        `⚠️ Nella griglia ci sono ${orfani.length} persone che non lavorano più qui ` +
+        `(${rimossi} turni scoperti). Controlla i turni: quei servizi erano vuoti.`
+      );
+    }
+    s.griglia = dec.griglia;
+  }
   if (dec.caparraGruppi !== undefined) s.caparraGruppi = dec.caparraGruppi;
   // Solo i NUOVI assunti entrano in griglia, con gli arrivi di default e
   // un giorno di riposo: chi è già in griglia mantiene i turni decisi.
@@ -781,6 +799,31 @@ export function avanzaMese(
     }
   }
   const grigliaAttiva = capacitaMensile > 0;
+
+  // ── Orario consigliato per ogni servizio: il motore lo sa, va detto.
+  const orariConsigliati: ReportMese["orariConsigliati"] = [];
+  const mediaPerDow: Record<number, { tot: number; n: number }> = {};
+  for (const g of r.giorni) {
+    if (g.chiuso) continue;
+    (mediaPerDow[g.dow] ??= { tot: 0, n: 0 });
+    mediaPerDow[g.dow].tot += g.copertiDomanda;
+    mediaPerDow[g.dow].n++;
+  }
+  for (let dow = 0; dow < 7; dow++) {
+    const media = mediaPerDow[dow] ? mediaPerDow[dow].tot / mediaPerDow[dow].n : 0;
+    for (const sv of ["pranzo", "cena"] as Servizio[]) {
+      const sp = s.griglia[dow][sv];
+      if (!sp.aperto) continue;
+      const attesi = media * (sv === "pranzo" ? quotaPranzo : 1 - quotaPranzo);
+      const a = arrivoConsigliato(sp, inTurno, attesi, complessita);
+      orariConsigliati.push({
+        dow, servizio: sv,
+        cucina: a.cucina !== null ? oraTesto(a.cucina) : null,
+        sala: a.sala !== null ? oraTesto(a.sala) : null,
+        coperti: Math.round(attesi),
+      });
+    }
+  }
 
   const capOre = capacitaSquadra(lavoratori, Math.round(r.copertiTotali / ORARIO.settimanePerMese));
   // ~4,33 settimane al mese; il titolare che copre un ruolo è già dentro `operativi`
@@ -1218,6 +1261,16 @@ export function avanzaMese(
   const avanz = avanzaControlli(s.controlli);
   eventi.push(...avanz.eventi);
 
+  const serviziSettimana = s.griglia.reduce(
+    (a, g) => a + (g.pranzo.aperto ? 1 : 0) + (g.cena.aperto ? 1 : 0), 0);
+  if (serviziSettimana < 10 && domandaChiusa > r.copertiTotali * 0.25) {
+    eventi.push(
+      `🚪 Tieni aperti ${serviziSettimana} servizi su 14: perdi circa ` +
+      `${Math.round(domandaChiusa * (1 - QUOTA_RECUPERO))} coperti al mese di domanda che non intercetti. ` +
+      `Aprire di più richiede più personale, ma la gente c'è.`
+    );
+  }
+
   if (oreSprecateMese > 6) {
     eventi.push(`⏳ ${Math.round(oreSprecateMese)} ore pagate senza servizio questo mese: la brigata arriva troppo presto.`);
   }
@@ -1431,6 +1484,12 @@ export function avanzaMese(
     scadenze,
     usciteProiettate: usciteProiettate(scadenze, 4),
     consigli,
+    orariConsigliati,
+    domandaPersaChiusure: {
+      coperti: Math.round(domandaChiusa * (1 - QUOTA_RECUPERO)),
+      ricaviPersi: Math.round(domandaChiusa * (1 - QUOTA_RECUPERO) * r.scontrinoMedio),
+      serviziAperti: serviziSettimana, serviziPossibili: 14,
+    },
     noShow: { coperti: noShowCoperti, ricaviPersi: ricaviPersiNoShow },
     chiamate,
     ricetteImparate,
@@ -1480,6 +1539,9 @@ function cessaRapporto(s: StatoPartita, id: string, motivo: string, eventi: stri
   if (i < 0) return;
   const d = s.staff[i];
   s.staff.splice(i, 1);
+  // chi esce dall'organico esce anche dai turni, altrimenti resta un
+  // fantasma in griglia e quel servizio risulta coperto ma è vuoto
+  if (s.griglia) ripuliscGriglia(s.griglia, new Set(s.staff.map((x) => x.id)));
   eventi.push(`👋 ${d.nome} (${d.ruolo}): ${motivo}`);
   liquidaTfrDi(s, id, d.inRegola, eventi);
 }
