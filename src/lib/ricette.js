@@ -203,7 +203,7 @@ export function categoriaLabel(c) { return LABEL_CATEGORIA[c] ?? (c.charAt(0).to
 export function tipoLabel(t) { return LABEL_TIPO[t] ?? t; }
 
 /** Costo materie prime a porzione, stessa formula del motore. */
-export function custoPorzione(r, qualita = 'standard') {
+export function costoPorzione(r, qualita = 'standard') {
   const molt = MOLTIPLICATORE_QUALITA[qualita] ?? 1;
   return (r.ingredienti ?? []).reduce((s, i) => s + (LISTINO[i.nome]?.prezzo ?? 0) * molt * i.quantita, 0);
 }
@@ -211,10 +211,10 @@ export function custoPorzione(r, qualita = 'standard') {
 /** Food cost in % del prezzo netto IVA (somministrazione 10%). */
 export function foodCostPct(r, prezzo, qualita = 'standard') {
   const netto = (prezzo ?? r.prezzoVendita) / 1.1;
-  return netto > 0 ? custoPorzione(r, qualita) / netto : 0;
+  return netto > 0 ? costoPorzione(r, qualita) / netto : 0;
 }
 
 /** Margine lordo a porzione, € IVA esclusa. */
 export function margine(r, prezzo, qualita = 'standard') {
-  return (prezzo ?? r.prezzoVendita) / 1.1 - custoPorzione(r, qualita);
+  return (prezzo ?? r.prezzoVendita) / 1.1 - costoPorzione(r, qualita);
 }
